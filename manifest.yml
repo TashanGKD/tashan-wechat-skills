@@ -1,6 +1,6 @@
 name: tashan-wechat-skills
 display_name: Tashan WeChat Skills
-version: 1.3.0
+version: 1.4.0
 description: Tashan official-account (WeChat) publishing skills — drafting, logic and fact checking, illustration, proofreading, citation compliance, and WeChat HTML typesetting.
 homepage: https://github.com/TashanGKD/tashan-wechat-skills
 license: MIT
@@ -30,3 +30,6 @@ skills:
   - id: wechat-article-crawler
     category: sourcing
     entrypoint: skills/wechat-article-crawler/SKILL.md
+  - id: team-collab
+    category: collaboration
+    entrypoint: skills/team-collab/SKILL.md

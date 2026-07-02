@@ -50,7 +50,7 @@ Tashan continuously publishes content around "interdisciplinary exchange x AI fo
 
 ## Included skills
 
-**8 skills**: the WeChat publishing chain plus crawling/archival.
+**9 skills**: the WeChat publishing chain, crawling/archival, plus a repo-agnostic team-collaboration skill.
 
 | Skill | Path | Purpose |
 |---|---|---|
@@ -62,6 +62,7 @@ Tashan continuously publishes content around "interdisciplinary exchange x AI fo
 | **article-image-styles** | [`skills/article-image-styles`](skills/article-image-styles/SKILL.md) | Manage the illustration style library (S01–S10). |
 | **article-review-tracker** | [`skills/article-review-tracker`](skills/article-review-tracker/SKILL.md) | Track editorial feedback and resolve it item by item. |
 | **wechat-article-crawler** | [`skills/wechat-article-crawler`](skills/wechat-article-crawler/SKILL.md) | Crawl/archive WeChat articles (6 methods + script); ships Tashan's own archived articles; upstream of the writing chain. |
+| **team-collab** | [`skills/team-collab`](skills/team-collab/SKILL.md) | Generic async team-collaboration + memory layer ("files as messages": posts/decisions, worklog, session archival / conversation tree); **repo-agnostic**, drops into any git project. |
 
 **Chain**: `wechat-article-writer` (entry) → `document-pipeline` (engine) → (optional) `article-proofreading` + `ai-image-generator` (enhanced by `article-image-angles` / `article-image-styles`).
 
@@ -93,7 +94,7 @@ Illustration needs a key: `export DASHSCOPE_API_KEY=...` (see [SECURITY.md](SECU
 tashan-wechat-skills/
 ├── docs/assets/tashan.svg   # unified logo
 ├── docs/                    # usage & update guide
-├── skills/                  # 8 self-contained skills
+├── skills/                  # 9 self-contained skills
 ├── scripts/install.sh       # install into a skill dir
 ├── manifest.yml             # skill manifest
 ├── CHANGELOG.md CONTRIBUTING.md SECURITY.md LICENSE

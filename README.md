@@ -50,7 +50,7 @@
 
 ## 包含的 skill
 
-共 **8 个**：公众号发文链路 + 抓取归档。
+共 **9 个**：公众号发文链路 + 抓取归档 + 通用团队协作。
 
 | Skill | 目录 | 作用 |
 |---|---|---|
@@ -62,6 +62,7 @@
 | **article-image-styles** | [`skills/article-image-styles`](skills/article-image-styles/SKILL.md) | 配图风格库管理（S01–S10 等） |
 | **article-review-tracker** | [`skills/article-review-tracker`](skills/article-review-tracker/SKILL.md) | 审稿意见结构化追踪、逐条落实 |
 | **wechat-article-crawler** | [`skills/wechat-article-crawler`](skills/wechat-article-crawler/SKILL.md) | 抓取/归档公众号文章（6 种方案 + 脚本），随附他山自有文章存档；发文链路的上游语料 |
+| **team-collab** | [`skills/team-collab`](skills/team-collab/SKILL.md) | 通用团队异步协作 + 记忆层（「文件即消息」发帖/决策留痕、工作日志、会话归档/对话树）；**仓库无关**，可落地任意 git 项目 |
 
 **调用链**
 
@@ -120,7 +121,7 @@ tashan-wechat-skills/
 ├── docs/
 │   ├── assets/tashan.svg     # 统一 Logo
 │   └── 使用与更新指南.md      # 面向智能体的详细用法
-├── skills/                   # 8 个自包含 skill（SKILL.md + references/ + assets/ + templates/）
+├── skills/                   # 9 个自包含 skill（SKILL.md + references/ + assets/ + templates/）
 ├── scripts/install.sh        # 安装到 skill 目录
 ├── manifest.yml              # skill 清单
 ├── CHANGELOG.md              # 版本变更（SemVer）
