@@ -1,0 +1,29 @@
+name: tashan-wechat-skills
+display_name: Tashan WeChat Skills
+version: 1.0.0
+description: Tashan official-account (WeChat) publishing skills — drafting, logic and fact checking, illustration, proofreading, citation compliance, and WeChat HTML typesetting.
+homepage: https://github.com/TashanGKD/tashan-wechat-skills
+license: MIT
+produced_by: Tashan Interdisciplinary Innovation Association (UCAS) / Tashan AI Team
+skills:
+  - id: wechat-article-writer
+    category: writing-pipeline
+    entrypoint: skills/wechat-article-writer/SKILL.md
+  - id: document-pipeline
+    category: writing-pipeline
+    entrypoint: skills/document-pipeline/SKILL.md
+  - id: article-proofreading
+    category: review
+    entrypoint: skills/article-proofreading/SKILL.md
+  - id: article-review-tracker
+    category: review
+    entrypoint: skills/article-review-tracker/SKILL.md
+  - id: ai-image-generator
+    category: illustration
+    entrypoint: skills/ai-image-generator/SKILL.md
+  - id: article-image-angles
+    category: illustration
+    entrypoint: skills/article-image-angles/SKILL.md
+  - id: article-image-styles
+    category: illustration
+    entrypoint: skills/article-image-styles/SKILL.md

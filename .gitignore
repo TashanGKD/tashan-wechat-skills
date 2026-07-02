@@ -1,0 +1,9 @@
+.DS_Store
+*.log
+.env
+.env.*
+__pycache__/
+*.pyc
+node_modules/
+# 生成产物（文章 HTML/图片）不入本 skill 仓库
+output/
