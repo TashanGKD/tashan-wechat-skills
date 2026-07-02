@@ -93,7 +93,7 @@ Illustration needs a key: `export DASHSCOPE_API_KEY=...` (see [SECURITY.md](SECU
 tashan-wechat-skills/
 ├── docs/assets/tashan.svg   # unified logo
 ├── docs/                    # usage & update guide
-├── skills/                  # 7 self-contained skills
+├── skills/                  # 8 self-contained skills
 ├── scripts/install.sh       # install into a skill dir
 ├── manifest.yml             # skill manifest
 ├── CHANGELOG.md CONTRIBUTING.md SECURITY.md LICENSE

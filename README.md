@@ -120,7 +120,7 @@ tashan-wechat-skills/
 ├── docs/
 │   ├── assets/tashan.svg     # 统一 Logo
 │   └── 使用与更新指南.md      # 面向智能体的详细用法
-├── skills/                   # 7 个自包含 skill（SKILL.md + references/ + assets/ + templates/）
+├── skills/                   # 8 个自包含 skill（SKILL.md + references/ + assets/ + templates/）
 ├── scripts/install.sh        # 安装到 skill 目录
 ├── manifest.yml              # skill 清单
 ├── CHANGELOG.md              # 版本变更（SemVer）
