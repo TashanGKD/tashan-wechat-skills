@@ -4,6 +4,8 @@
 
 An agent-facing skill set (for Claude Code / Cursor and similar) that runs the full **Tashan official-account (WeChat) publishing chain**: drafting, logic self-check, fact verification, illustration planning and generation, proofreading, citation compliance, and final WeChat-ready HTML typesetting. Output follows the writing and layout conventions of the "他山学科交叉" WeChat account of the Tashan Interdisciplinary Innovation Association, University of Chinese Academy of Sciences.
 
+> **Core use**: typeset an existing manuscript (word / md / txt) and export it as WeChat HTML — auto-adds the content summary, fixes citation formatting, applies the footer template. **Proofreading is optional.** Writing from scratch is also supported.
+
 > Every skill is **self-contained**: the `references/` (layout/writing/illustration source docs), `assets/` (footer template images), and `templates/` it needs live inside its own folder. Copy the folder and it works — no external paths.
 
 ## Included skills (7)

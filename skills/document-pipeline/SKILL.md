@@ -1,6 +1,6 @@
 ---
 name: document-pipeline
-description: 统一写作流水线。任何文档/文章/报告均走此流程：研究→草稿→逻辑自检→真实性校对→画图规划→批量画图→图片自审→审稿→引用规范→格式转换（HTML/LaTeX/MD）。可从任意阶段入场（已有草稿直接审核，已审稿直接转格式）。触发词：「写一篇/帮我写/写一份/我有初稿了/帮我检查逻辑/帮我配图/从画图开始/从[Stage名称]开始继续/转成HTML/转成LaTeX」。注意：「只要审稿」请直接触发 article-proofreading；「帮我审稿」不触发本 Skill。
+description: 统一写作流水线。核心用法：把已有手稿（word/md/txt）排版并导出（HTML/LaTeX/MD）。完整流程：研究→草稿→逻辑自检→真实性校对→画图规划→批量画图→图片自审→（可选）审稿→引用规范→格式转换。可从任意阶段入场（已有手稿直接排版转格式）。触发词：「把手稿排版/转成HTML/导出HTML/帮我排版/我有初稿了/写一篇/帮我写/帮我配图/从[Stage名称]开始继续/转成LaTeX」。注意：「只要审稿」请直接触发 article-proofreading；「帮我审稿」不触发本 Skill。
 ---
 
 # 统一写作流水线（document-pipeline）
@@ -57,6 +57,8 @@ A. 判断 target_format：
    - 用户说「学术论文/LaTeX/论文/期刊」→ target_format = latex
    - 用户说「知识库/认知结构/调研笔记/研究报告」→ target_format = md + mode = research
    - 其他/未说明 → target_format = md（默认，不询问，直接继续）
+
+   **输入手稿格式**：可为 word(.docx/.doc) / markdown / txt / 粘贴全文。若是 .docx/.doc，先抽取为 markdown（正文 + 图片）再进流程；抽取占位符避免使用双下划线（见 Stage 5 踩坑）。
 
    **文档性质判断（写入位置决策）**：
    - **原创思考类**（用户自己的分析/产品定义/架构设计/认知洞见）→ 写入认知结构 L1/L2 或项目目录
@@ -456,14 +458,14 @@ Step 5.1  执行图片生成（调用 `ai-image-generator` Skill）
 
 ---
 
-## Stage 7：交给审稿者
+## Stage 7：交给审稿者（可选）
 
-> 自动触发 article-proofreading，独立视角，全面挑问题。
+> 审稿为**可选**步骤，默认不强制。仅当用户要求、或希望发布前复核时执行 article-proofreading。排版导出类任务默认跳过本 Stage，直接进 Stage 8。
 
 ```
 输入：Stage 6 草稿
 
-Step 7.1  触发 article-proofreading Skill
+Step 7.1  （可选）触发 article-proofreading Skill
   传入草稿全文 + 文章类型标注（research/article/report/analysis）
   
   article-proofreading Skill 会检查：
@@ -683,7 +685,7 @@ Step 7.5  完成信号
 - **R1 EVIDENCE_FIRST**：来源类别必须明确（WebSearch / AI知识 / 推断）
 - **R3 READ_FIRST**：Stage 1 必须真正执行 WebSearch，不允许纯凭训练知识写含事实性主张的文档
 - **R6 ARTIFACT_FIRST**：输出必须落到文件，不允许只在对话中展示
-- **R8 VERIFY_BEFORE_FREEZE**：Stage 7 审稿通过后才能执行 Stage 8 保存
+- **R8 VERIFY_BEFORE_FREEZE**：Stage 8 保存前必须完成引用规范检查 + 排版核查；审稿（Stage 7）为可选，不作为保存前置
 - **R9 CITATION_GATE**：含外部事实/文献的文章必须先完成引用规范检查，正文引用与文末参考文献一致后才能格式转换
 
 ---
