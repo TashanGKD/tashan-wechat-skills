@@ -50,7 +50,7 @@
 
 ## 包含的 skill
 
-共 **7 个**，组成公众号发文链路。
+共 **8 个**：公众号发文链路 + 抓取归档。
 
 | Skill | 目录 | 作用 |
 |---|---|---|
@@ -61,6 +61,7 @@
 | **article-image-angles** | [`skills/article-image-angles`](skills/article-image-angles/SKILL.md) | 配图多视角分析，给候选提示词 |
 | **article-image-styles** | [`skills/article-image-styles`](skills/article-image-styles/SKILL.md) | 配图风格库管理（S01–S10 等） |
 | **article-review-tracker** | [`skills/article-review-tracker`](skills/article-review-tracker/SKILL.md) | 审稿意见结构化追踪、逐条落实 |
+| **wechat-article-crawler** | [`skills/wechat-article-crawler`](skills/wechat-article-crawler/SKILL.md) | 抓取/归档公众号文章（6 种方案 + 脚本），随附他山自有文章存档；发文链路的上游语料 |
 
 **调用链**
 
@@ -70,6 +71,8 @@ wechat-article-writer（入口：手稿→排版）
               ├─（可选）article-proofreading（审稿）
               └─ ai-image-generator（配图）← article-image-angles / article-image-styles 增强
 ```
+
+**上游**：`wechat-article-crawler` 抓取/归档公众号文章（含他山自有存档），为写作提供样本与语料。
 
 > 每个 skill **自包含**：`SKILL.md` 里的 `references/…`、`assets/…`、`templates/…` 都相对该 skill 目录解析，整目录复制/软链即可用。
 

@@ -50,7 +50,7 @@ Tashan continuously publishes content around "interdisciplinary exchange x AI fo
 
 ## Included skills
 
-**7 skills** forming the WeChat publishing chain.
+**8 skills**: the WeChat publishing chain plus crawling/archival.
 
 | Skill | Path | Purpose |
 |---|---|---|
@@ -61,6 +61,7 @@ Tashan continuously publishes content around "interdisciplinary exchange x AI fo
 | **article-image-angles** | [`skills/article-image-angles`](skills/article-image-angles/SKILL.md) | Analyze illustration angles and draft prompts. |
 | **article-image-styles** | [`skills/article-image-styles`](skills/article-image-styles/SKILL.md) | Manage the illustration style library (S01–S10). |
 | **article-review-tracker** | [`skills/article-review-tracker`](skills/article-review-tracker/SKILL.md) | Track editorial feedback and resolve it item by item. |
+| **wechat-article-crawler** | [`skills/wechat-article-crawler`](skills/wechat-article-crawler/SKILL.md) | Crawl/archive WeChat articles (6 methods + script); ships Tashan's own archived articles; upstream of the writing chain. |
 
 **Chain**: `wechat-article-writer` (entry) → `document-pipeline` (engine) → (optional) `article-proofreading` + `ai-image-generator` (enhanced by `article-image-angles` / `article-image-styles`).
 
