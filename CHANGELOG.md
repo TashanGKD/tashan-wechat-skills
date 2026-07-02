@@ -13,6 +13,17 @@
 
 ---
 
+## [v1.2.0] - 2026-07-02
+
+### Added
+- `docs/assets/tashan.svg`：他山统一 Logo。
+
+### Changed
+- README 按他山《01_README 写作规范》整改：新增固定 Logo 头部（居中可点击、宽 280、链 tashan.ac.cn）、标题中英双行、快速导航条、MIT badge、一行定位语、项目简介两段式、生态位置节。
+- README 双语命名对齐规范：`README.md` 为中文主版本，英文版改名为 `README.en.md`；移除原 `README.zh-CN.md`。
+
+---
+
 ## [v1.1.0] - 2026-07-02
 
 ### Changed
