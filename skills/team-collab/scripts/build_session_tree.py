@@ -140,7 +140,10 @@ def main():
     except Exception:
         pass
     ap = argparse.ArgumentParser(description="重建去重分支树 → A 布局 + tree.json + TREE.md + 思维导图.md")
-    ap.add_argument("--person", required=True)
+    ap.add_argument("--person", required=True,
+                    help="你代表谁（工作日志目录名 + 署名身份）；个人自用填你的 handle，如 Boyuan。")
+    ap.add_argument("--repo", help="显式指定项目根，覆盖由脚本安装路径反推的默认；"
+                    "全局安装时用它指向目标仓库，如 --repo /path/to/project。")
     ap.add_argument("--src", help="只扫这一个项目目录（默认：跨所有项目目录收齐引用本仓库的会话）")
     ap.add_argument("--manifest", help="只用清单文件里列出的 session-id 建树（每行一个）。"
                     "用于固定快照、稳定重建——尤其在 live 会话期间避免新生成的续接/子智能体会话不断挤进来令树漂移。"
@@ -157,26 +160,31 @@ def main():
                          "默认不传 = 无条件全量重建（最稳；快照会过期，别信快照）。")
     args = ap.parse_args()
 
-    if not mt.PERSON_RE.match(args.person):
-        sys.exit(f"✗ --person 非法：{args.person!r}")
+    global REPO, REPO_MARKER
+    if args.repo:                                  # 显式指定项目根 → 覆盖安装路径反推（全局安装也能建任意仓库）
+        REPO = os.path.abspath(os.path.expanduser(args.repo))
+        REPO_MARKER = os.path.basename(REPO)
 
-    # 护栏：REPO 由脚本安装路径反推（见文件头 REPO=HERE/../../../..，假定装在 <repo>/.claude/skills/team-collab/）。
-    # 若解析出的 REPO 反把 ~/.claude 也包在里面，几乎肯定是**全局安装**（~/.claude/skills/…）——那样会把用户主
-    # 目录误当项目根、往 ~/团队协作记录 乱写、marker 变成主目录名。宁可拒绝并指路，也不静默写错地方（见
-    # references/install-and-build-issues.md#1.1；语义记忆三兄弟已用 _vector_env.resolve_repo 从 cwd 上溯规避此坑）。
-    _home_claude = os.path.abspath(os.path.dirname(PROJECTS))   # ~/.claude
-    _repo_abs = os.path.abspath(REPO)
-    try:
-        _misresolved = os.path.commonpath([_home_claude, _repo_abs]) == _repo_abs
-    except ValueError:
-        _misresolved = False   # 跨盘（Windows 不同盘符）→ 不可能包含 → 非误判
-    if _misresolved:
-        sys.exit(
-            f"✗ 解析出的项目根 REPO={_repo_abs}（marker={REPO_MARKER}）把 {_home_claude} 也包在内，"
-            f"几乎肯定是**全局安装**误把主目录当成了项目根。\n"
-            f"  请把 team-collab 装进**目标仓库**的 .claude/skills/（项目级安装），再从那一份跑：\n"
-            f"    <目标仓库>/.claude/skills/team-collab/scripts/build_session_tree.py --person {args.person}\n"
-            f"  （本脚本项目根由自身安装路径反推、暂无 --repo 覆盖。）")
+    if not mt.PERSON_RE.match(args.person):
+        sys.exit(f"✗ --person 非法：{args.person!r}（只用字母/数字/下划线/连字符/中文，如 Boyuan / XX78）")
+
+    # 护栏（仅当未显式 --repo 时）：REPO 由脚本安装路径反推（见文件头 REPO=HERE/../../../..，假定装在
+    # <repo>/.claude/skills/team-collab/）。若解析出的 REPO 反把 ~/.claude 也包在里面，几乎肯定是**全局安装**
+    # （~/.claude/skills/…）——那样会把用户主目录误当项目根、往 ~/团队协作记录 乱写。宁可拒绝并指路，也不静默
+    # 写错地方（见 references/install-and-build-issues.md#1.1）。传 --repo 显式指定即可绕过本护栏。
+    if not args.repo:
+        _home_claude = os.path.abspath(os.path.dirname(PROJECTS))   # ~/.claude
+        _repo_abs = os.path.abspath(REPO)
+        try:
+            _misresolved = os.path.commonpath([_home_claude, _repo_abs]) == _repo_abs
+        except ValueError:
+            _misresolved = False   # 跨盘（Windows 不同盘符）→ 不可能包含 → 非误判
+        if _misresolved:
+            sys.exit(
+                f"✗ 解析出的项目根 REPO={_repo_abs}（marker={REPO_MARKER}）把 {_home_claude} 也包在内，"
+                f"几乎肯定是**全局安装**误把主目录当成了项目根。任选其一：\n"
+                f"  ① 把 team-collab 装进**目标仓库**的 .claude/skills/（项目级安装），从那一份跑；或\n"
+                f"  ② 显式指定：build_session_tree.py --repo <目标仓库> --person {args.person}")
 
     out = args.out or os.path.join(REPO, "团队协作记录", "智能体工作日志", args.person, "对话树")
 
@@ -526,6 +534,8 @@ def main():
     vargs = [sys.executable, os.path.join(HERE, "verify_tree.py"), "--person", args.person, "--tree", out]
     if args.src:
         vargs += ["--src", args.src]
+    if args.repo:
+        vargs += ["--repo", args.repo]
     if args.manifest:
         vargs += ["--manifest", args.manifest]
     if args.adapters:

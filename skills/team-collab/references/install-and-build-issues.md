@@ -2,7 +2,7 @@
 
 > 来源：2026-07-07，一次真实落地过程。任务链：`git clone` tashan-wechat-skills → 把 `team-collab`/`recall-memory` **全局**注册进 `~/.claude/skills/` → 在 `/Users/boyuan/softmatter`（**不是 git 仓库**）建对话树 + 语义记忆库（`--person Boyuan`）。
 > 环境：macOS（Darwin 25.3）· 系统 `python3` = `/usr/bin/python3` = **Python 3.9.6**（无 `python`、无 `py`）· 无 conda。
-> 定位：性质同 [`retrieval-issues-and-divergent-protocol.md`](./retrieval-issues-and-divergent-protocol.md)（recall-memory 的问题实录），但覆盖**安装 / 建树 / 建库首次落地**这一段。每条都附**原始命令 + 输出**为证。**修复状态见下「修复状态」节**：#1(护栏) / #2 / #4 已在 macOS 上就地修并验证（本次落地时顺手修的、且都能在 mac 验证）；#3 / #5 / #1 的完整重设计留给读到本文的维护者。
+> 定位：性质同 [`retrieval-issues-and-divergent-protocol.md`](./retrieval-issues-and-divergent-protocol.md)（recall-memory 的问题实录），但覆盖**安装 / 建树 / 建库首次落地**这一段。每条都附**原始命令 + 输出**为证。**修复状态见下「修复状态」节**：#1–#5 均已在 macOS 上就地修并验证；仅剩两处**设计判断**留给维护者——#3 的 `long-id` 是否过度脱敏、#1 的「缺省是否改用 cwd 上溯替换安装路径反推」。
 > 复现说明：除特别标注外，问题与操作系统无关（REPO 推导、脱敏计数、CLI 契约都是平台无关逻辑）。
 
 ## 摘要表
@@ -11,7 +11,7 @@
 |---|---|---|---|---|
 | 1 | **P1** | 全局安装时 `build_session_tree.py` 把 REPO 误解析成用户 home，会往 `~/团队协作记录/` 写、marker 变 `boyuan` | `build_session_tree.py:24,29,32`（REPO 由**脚本安装路径**反推，无 `--repo`、无护栏） | 加 `--repo`；缺省用 **cwd 上溯**找项目根而非安装路径；REPO 落到 home/非项目时**拒绝并提示** |
 | 2 | P2 | 建库脚本打印的检索提示是 **Windows-only**（`py -3.12 …`），mac/Linux 复制即 `command not found` | `build_memory_index.py`（末尾提示行，见 E5） | 按平台给命令，或直接打印 `sys.executable` |
-| 3 | P2 | **脱敏计数误导**：`脱敏命中: N` / 建库总数计的是 render **前**全文（多为随后被截断/丢弃的工具内容），与产物里实际标记数差 2~3 个数量级 | 计数发生在 `redact()`，`render()` 之后大量内容被丢弃/截断（见 E4） | 分报「原文命中」与「产物内保留」；复核 `long-id` 是否把技术 uuid/hash 当 PII 过度脱敏 |
+| 3 | P2 | 每节点 `脱敏命中: N` 显示的是**「累计到此」的 running total**（对话10 头写 11277，文件里只有 21），因跨节点共享同一 `counts` | `build_session_tree.py:300` 一个 `counts` 传给每个节点的 `render()`；`render()` 用 `sum(counts)`（`make_transcript:99`） | `render()` 改用**本次增量** `sum(counts)-起始` 作每节点计数 |
 | 4 | P3 | 首次在**无依赖机器**上建库需手动搭 venv：系统 `python3`(3.9.6) 无 `chromadb`，`python`/`py` 都不存在 | 依赖未随附；`ensure_vector_stack` 探测全失败时只报错不给 venv 步骤 | README/SKILL 增补 macOS/Linux 的 venv 建法；探测全失败时打印「建 venv」的具体命令 |
 | 5 | P3 | `--person` 必填、无默认、对首次/单人建树无引导 | `build_session_tree.py:143` | 文档给「个人用就填你的 handle」示例；或缺省时交互提示而非直接退出 |
 
@@ -19,14 +19,15 @@
 
 ---
 
-## 修复状态（2026-07-07 · 已在 macOS 上修 3 项并验证）
+## 修复状态（2026-07-07 · 5 项均已在 macOS 修并验证）
 
-> 落地者在 macOS 上把**能在 mac 验证、且不改成功路径**的 3 项就地修了并验证；其余留维护者。改动 4 个文件，每项附实测。
+> 落地者在 macOS 上把 5 项都就地修了、逐项实测；只剩两处**设计判断**留维护者（文末各条注明）。改动 6 个文件。
 
-- **#2 ✅ 已修+验证** — `build_memory_index.py` 检索提示改按平台（`"py -3.12" if os.name=="nt" else "python3"`）。实测：重建索引后打印 `检索：python3 …`（不再 `py -3.12`）。
-- **#4 ✅ 已修+验证** — (a) `recall-memory/SKILL.md` 增 macOS/Linux venv 说明 + 「首次搭建」③ 选项；(b) `_vector_env.py` 两处「无依赖」失败提示加入可直接粘贴的 ③ venv 命令（按平台）。实测：系统 `python3`（无依赖、`TC_VECTOR_PYTHON` 未设）运行时打印含 ③ venv recipe 的新提示。
-- **#1 ⚠️ 部分已修（护栏）+验证** — `build_session_tree.py` 加护栏：解析出的 REPO 把 `~/.claude` 包在内（= 全局安装误判）时**拒绝并指路**，不再静默往 `~/团队协作记录` 写。实测：全局安装 `--list` → 拒绝（exit 1、未创建 `~/团队协作记录`）；项目级 `--list` → 照常列 182 会话（exit 0）。**回归**：冻结源（181 会话）下 edited-vs-original 双跑 `tree.json` **字节一致**（261==261），证明护栏对成功路径零影响。**未做**：完整 `--repo` 参数 / 缺省 cwd 上溯重设计（跨 `build_session_tree.py` + `verify_tree.py`、属设计变更）。
-- **#3 / #5 / #1 完整重设计 — 未动**：#3 触及共享 `redact`/`report` + `check_pii` gate + 字节回归、且「该报什么数」是设计判断；#5 交互式 prompt 本身是 footgun，只宜文档化；#1 重设计跨 build+verify。
+- **#1 ✅ 已修+验证** — `build_session_tree.py` 加 `--repo`（显式项目根、覆盖安装路径反推；全局安装也能建任意仓库），并透传给 `verify_tree.py`；未传 `--repo` 时保留**护栏**（REPO 把 `~/.claude` 包在内=全局误判 → 拒绝并指路）。实测：全局安装**无** `--repo` `--list` → 拒绝（exit 1、未建 `~/团队协作记录`）；全局 `--repo /…/softmatter --list` → 列 182（exit 0）；`--repo` 子集建树 → `verify ✓ 全过`（证明透传到 verify）。回归：护栏对成功路径字节零影响（冻结源 261==261）。**留维护者**：是否把「缺省」也从安装路径反推改成 cwd 上溯（首次建树时 `团队协作记录/` 尚不存在、`resolve_repo` 会落回安装路径，故缺省未改）。
+- **#2 ✅ 已修+验证** — `build_memory_index.py` 检索提示改按平台。实测：重建索引打印 `检索：python3 …`。
+- **#3 ✅ 已修+验证** — `make_transcript_claudecode.py` `render()` 改用**本次 render 的命中增量**作每节点 `脱敏命中`，不再跨节点累计。实测（25 会话子集）各节点头部 `59 0 0 5 81 21 3 7 0 0 0 0`（**非单调** → 确为每节点；旧版会一路涨到总数 381），40 个干净节点 header==文件内标记数。**留维护者**：`long-id`（旧总报告占大头）是否把 uuid/hash 当 PII 过度脱敏——属规则判断，放宽有漏真 PII 风险，未改。
+- **#4 ✅ 已修+验证** — `recall-memory/SKILL.md` 增 macOS/Linux venv 说明 + 「首次搭建」③；`_vector_env.py` 两处「无依赖」失败提示加入可粘贴的 ③ venv 命令。实测：系统 `python3`（无依赖）运行打印含 venv recipe 的新提示。
+- **#5 ✅ 已修+验证** — `--person` 加 `help`（举例 `Boyuan`）+ 非法值报错带示例。实测：`--person 'bad name!'` → `只用字母/数字/下划线/连字符/中文，如 Boyuan / XX78`；`--help` 显示引导。（未加交互式 prompt：非交互场景是 footgun。）
 
 ---
 
@@ -83,11 +84,13 @@ add_argument("--adapters")add_argument("--with-subagents")  add_argument("--if-s
 
 **建议**：提示行按平台选命令（Windows→`py -3.12` / 其它→`python3` 或已探测到的解释器），或直接回显 `sys.executable`。SKILL/README 里同类 `python3` 示例也应对 mac「`python3` 可用、`python` 不存在」的情况说明。
 
-### 1.3 【P2】脱敏计数严重高于产物内实际标记数（计数口径误导）
+### 1.3 【P2】每节点 `脱敏命中: N` 是「累计到此」的 running total（非本节点计数）—— ✅ 已修
 
-**场景**：建树结束打印脱敏总报告；每个 `段.md` 头部也写「脱敏命中: N 处」。用户会据此判断「产物里有多少 PII 被挡掉」。
+**场景**：建树给每个 `段.md` 头部写「脱敏命中: N 处」，建库结束再打印总报告。用户会据此判断「本节点挡了多少 PII」。
 
-**问题**：报出的数字计的是 **render 前的全文**（含塞满 uuid/hash 的 `tool_use` 入参与 `tool_result`），而 `render()` 随后把这些内容**大量截断/丢弃**——所以最终 `段.md`（也是进入向量库的内容）里的实际脱敏标记，比报出的数字少 **2~3 个数量级**。
+**问题（真因，已据源码确认）**：`build_session_tree.py:300` 建**一个** `counts={}`，遍历节点时把**同一个** `counts` 传给每个节点的 `render()`（`:331`）；而 `render()` 用 `sum(counts.values())` 当本节点头部计数（`make_transcript_claudecode.py:99`）。于是每个节点头部显示的是**渲染到该节点时的累计命中**、而非它自身——越靠后数字越大，最后一个≈全库总数。
+
+> ⚠️ **更正**：本文早先猜测是「render 前全文命中、render 后截断丢弃」，**经查源码不成立**——`render()` 把 `tool_use`/`tool_result` 连同脱敏一起 emit 进 `段.md`（`make_transcript:96,98`），并未丢弃。真因是**跨节点共享 `counts`**。
 
 原始证据（同一个节点：build 总数 / 该节点 header 声称 / 该节点 `段.md` 实际标记）：
 ```
@@ -103,13 +106,11 @@ add_argument("--adapters")add_argument("--with-subagents")  add_argument("--if-s
 count: 21
      21 已脱敏:email          # long-id 标记数 = 0
 ```
-即：单节点声称 11277（占全库 13250 的绝大部分），但该节点唯一内容文件里只有 **21** 处、且全是 email；主导类型 `long-id`(10646) 在产物里**一个都没留下**——它们都在被丢弃的工具内容上。
+即：11277 是「渲染到 对话10 时的累计」（该节点靠后），并非它自身；它自己的 `段.md` 只有 21 处（全 email）。
 
-**两个子问题**：
-- (a) **计数误导**：`脱敏命中: N` 让人以为文件里满是被挡的 PII，实际产物很干净；应区分「原文命中数」与「产物内保留数」，或改为在 render/截断**之后**统计。
-- (b) **疑似过度脱敏**：`long-id`(10646) 极可能是把 session uuid / git sha / 参数 hash 这类**技术标识符**当 PII。虽然这次它们多被截断掉、没污染产物，但计数口径 + 规则值得复核（研究仓库里技术长 id 很多）。
+**修复**：`render()` 进入时记 `_red_start = sum(counts)`，末尾用 `sum(counts) - _red_start` 作本节点头部计数与返回值；共享 `counts` 仍供总报告累计。**实测**（25 会话子集）各节点头部 `59 0 0 5 81 21 3 7 0 0 0 0`（非单调递增 → 确为每节点；旧版会一路涨到总数），40 个「干净」节点 header==文件内标记数（其余 6 个仅因该会话正文里含 `脱敏命中`/`已脱敏` 字样而差 1~10，是测量假象）。
 
-> 机制为**推断**（结合脱敏计数在 `redact()`、丢弃/截断在 `render()`）：请维护者据源码确认后再定改法。
+**留维护者（未改）**：`long-id`（旧总报告占 10646）是否把 session uuid / git sha / 参数 hash 当 PII 过度脱敏——属**规则**判断，放宽有漏真 PII 风险，未动。
 
 ### 1.4 【P3】首次在无依赖机器上建库要手动搭 venv，脚本探测全失败时不给建法
 
@@ -155,4 +156,4 @@ build_session_tree.py:143    ap.add_argument("--person", required=True)
 
 ---
 
-*本文第一节报问题、第二节记环境注意；「修复状态」节记本次已在 macOS 就地修并验证的 3 项。其余修复请按仓库 `CONTRIBUTING.md` 开分支 + conventional commit + PR。*
+*本文第一节报问题、第二节记环境注意；「修复状态」节记本次已在 macOS 就地修并验证的 5 项（仅剩两处设计判断留维护者）。其余按仓库 `CONTRIBUTING.md` 开分支 + conventional commit + PR。*

@@ -63,6 +63,7 @@ def render(entries, human, source_tool, sids, counts, extra_lines=None, source_f
       本 md 是去重整理后的**视图**；真源 jsonl 才是逐条原文。把真源路径写进头部，读者/agent 便可
       顺着它回原始 jsonl 做无损重读。注意：路径是**该工作日志所有者的本机路径**——他人机上无此源时，
       以本 md 为准（这正是「自己拥有才下钻、否则读 md」的依据）。"""
+    _red_start = sum(counts.values())   # 记本次 render 前的累计 → 末尾算「本节点自身」命中（不含跨节点累加，见 install-and-build-issues.md#1.3）
     times = [e["time"] for e in entries if e["time"]]
     hl = [
         "# 完整对话记录（统一格式）", "",
@@ -96,8 +97,8 @@ def render(entries, human, source_tool, sids, counts, extra_lines=None, source_f
                 body.append(f"\n<details><summary>⟨工具调用 · {name}⟩</summary>\n\n```json\n{redact(inp, counts)}\n```\n</details>\n")
             for res in e["results"]:
                 body.append(f"\n<details><summary>⟨工具结果（{len(res)} 字符）⟩</summary>\n\n```\n{redact(res, counts)}\n```\n</details>\n")
-    total = sum(counts.values())
-    return head.replace("__REDCOUNT__", str(total)) + "".join(body), total
+    node_total = sum(counts.values()) - _red_start   # 本节点自身命中（修：原用 sum(counts)，跨节点共享 counts 时各节点头部显示的是「累计到此」的 running total）
+    return head.replace("__REDCOUNT__", str(node_total)) + "".join(body), node_total
 
 # ───────────────────────── 读取器（Claude Code 专属）─────────────────────────
 _NOISE = [
