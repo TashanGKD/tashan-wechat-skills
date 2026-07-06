@@ -15,8 +15,8 @@
   5. 自检五件套是否齐 + 打印脱敏提醒；**不自动提交**（脱敏是人工门，提交是另一步）
 
 用法（仓库任意目录可运行）：
-  python3 .claude/skills/team-collab/scripts/archive_session.py --person Boyuan --summary-file /tmp/s.md
-  python3 .claude/skills/team-collab/scripts/archive_session.py --person Boyuan --summary "今天做了……" --topic 合同v2
+  python3 .claude/skills/team-collab/scripts/archive_session.py --person Alice --summary-file /tmp/s.md
+  python3 .claude/skills/team-collab/scripts/archive_session.py --person Alice --summary "今天做了……" --topic 合同v2
 
 退出码：0 = 五件套齐（动机/研究历程至少已存在，实质内容仍需你确认）；2 = 仍有缺件（见输出）。
 """

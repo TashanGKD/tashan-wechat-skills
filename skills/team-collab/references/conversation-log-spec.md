@@ -13,7 +13,8 @@
 
 > 来源工具: <Claude Code | Codex | Cursor | …>
 > 会话(session): <session-id（多段用逗号）>
-> 参与者(human): <谁，如 Boyuan>
+> 真源(source-of-truth): <本机原始 .jsonl 绝对路径；多段/子智能体用 " ; " 分隔>
+> 参与者(human): <谁，如 Alice>
 > 时间: <最早时间> → <最晚时间>
 > 处理: 仅格式转换 + 脱敏，无 AI 提炼 | 脱敏命中: <N> 处
 > 规范: .claude/skills/team-collab/references/conversation-log-spec.md
@@ -45,6 +46,7 @@
 - 只有两种说话方：`🧑 <human>`（人，其 AI 替身代写视同本人）和 `🤖 agent`。
 - 工具调用 / 工具结果用 `<details>` 折叠，**完整保留、不省略**。
 - 按时间升序；多段会话（重启续接）按消息 id 去重后合并。
+- **`真源(source-of-truth)` 是回程票（必填）**：本 md 是去重整理后的**视图**，真源 `.jsonl` 才是逐条原文。头部写清真源的**本机绝对路径**，任何读者/agent 便可顺着它回原始 jsonl 做**无损重读**（对话树节点还会在 `节点段:` 行附 `uuid` 首末，便于按 uuid 精确定位）。真源路径是**该工作日志所有者的本机路径**——他人机上没有这个源，就以本 md 为准。这条正是「读本地历史对话」协议里「命中后若真源在本机就下钻、否则读 md」的落点（见 [`worklog.md` 读协议](./worklog.md)）。
 
 ---
 
@@ -85,10 +87,10 @@
 
 | 工具 | 原始记录位置 / 格式 | 适配器状态 |
 |---|---|---|
-| **Claude Code** | `~/.claude/projects/<项目>/<session-id>.jsonl`；子智能体在 `<session-id>/subagents/agent-<id>.jsonl`（`sessionId` 字段=父会话）；当前会话 id 见环境变量 `$CLAUDE_CODE_SESSION_ID` | ✅ 参考实现 `scripts/make_transcript_claudecode.py` |
-| Codex | （由 Codex 使用者补充：其 transcript 存放位置与格式）| ⬜ 待写 |
-| Cursor | （由 Cursor 使用者补充）| ⬜ 待写 |
-| 其他 | 找到本工具的原始对话文件 → 解析成第二节的原语 → 套用统一格式 + 脱敏 | ⬜ |
+| **Claude Code** | `~/.claude/projects/<项目>/<session-id>.jsonl`；子智能体在 `<session-id>/subagents/agent-<id>.jsonl`（`sessionId` 字段=父会话）；当前会话 id 见环境变量 `$CLAUDE_CODE_SESSION_ID` | ✅ `scripts/adapters/claudecode.py` |
+| **Codex** | `~/.codex/sessions/YYYY/MM/DD/rollout-<ISO>-<session_id>.jsonl`；每行 `{timestamp,type,payload}`；`session_meta.cwd`=项目；取 `response_item` 流；导入映射 `~/.codex/external_agent_session_imports.json` | ✅ `scripts/adapters/codex.py` |
+| **Cursor** | `…/Cursor/User/globalStorage/state.vscdb`（SQLite）：`composerData:<id>` 骨架 + `bubbleId:<id>:<bid>` 消息（type 1=user/2=assistant）；工作区↔会话链在 `workspaceStorage/<h>/state.vscdb` 的 `ItemTable['composer.composerData']` | ✅ `scripts/adapters/cursor.py` |
+| 其他 | 加一个 `SourceAdapter`（discover/load/sid_of，产出 CC 形状 dict）并在 `adapters/__init__.py` 注册；核心无需改 | 见 `docs/02-architecture.md` |
 
 ## 五、给其他框架写适配器的人
 

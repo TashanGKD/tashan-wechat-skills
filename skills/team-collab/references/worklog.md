@@ -5,6 +5,34 @@
 
 ---
 
+## 读协议：要读本地历史对话，先更新工作日志→以它检索→按真源下钻
+
+本文件多数篇幅在讲**怎么建**对话树（收尾归档）。但对话树同样是**读**的入口——当有人要"翻本地过去的对话记录"（"我以前在哪做过 X""上次那个网页/脚本/相图是哪个会话做的""回顾之前的讨论定了什么"），走这套、别裸 `grep ~/.claude/projects/**.jsonl`：
+
+**为什么不能裸 grep 原始 jsonl。** 本地 jsonl 有两个"病"（详见下节「本地是怎么存的」）：① **续接即重抄前文**，同一段对话在本地躺 N 份、噪声极大；② 它**一直在长**，你某一刻扫到的是**快照**，容易漏掉刚开/还在写的会话。真实教训：本项目一次早扫只见到 16 个会话就当"全部"，实际已有 24 个——今天的并行会话全漏了。对话树把这堆去重成一棵干净、可检索的树，正是为读而生。
+
+**三步：**
+
+1. **先更新**（只在要找"很新的对话"时；日常检索可跳过以求快）：
+   ```bash
+   PYTHONIOENCODING=utf-8 python3 .claude/skills/team-collab/scripts/build_session_tree.py --person <你代表谁> --if-stale
+   PYTHONIOENCODING=utf-8 python3 .claude/skills/team-collab/scripts/build_memory_index.py --person <你代表谁>   # 增量重嵌新/变节点
+   ```
+   - `--if-stale`：秒级新鲜度检查（`stat` 源会话 mtime + 有无新 session vs 现有 `tree.json`），**陈旧才重建、否则秒过**。不加 = **无条件全量重建**（最稳，别信快照）。
+   - `build_memory_index.py` 增量 upsert（按内容 hash 只重嵌变化/新增节点），让语义检索跟上最新的树。
+   - （Windows 记得 `PYTHONIOENCODING=utf-8`；脚本会自动探测装了 chromadb 的解释器（python3/python/py 等），不必是当前解释器。verify_tree 要板上钉钉就**另跑一次**看退出码、别接管道。）
+2. **检索（优先语义召回）**，入口是**记忆向量库/对话树**、不是裸 jsonl：
+   - **首选语义**：`recall-memory` skill 或 `python3 .claude/skills/team-collab/scripts/query_memory.py "<问题>" --person <你代表谁> --json`——按意思命中相关节点，每条回带 `摘要/snippet/session/真源(source_files)/段.md/锚点`。多数问题一步到位。
+   - **要人工浏览**：对话树里的 `目录.md`（全项目任务总目录，叶子 `↪` 跳到对话对应行）、`思维导图.md`（Mermaid 全局概览）、`TREE.md`/`tree.json`（`tree.json` 每节点带 `sessions`/`uuids`/`source_files`）、命中节点的 `段.md`（去重后的对话原文、已脱敏）。
+3. **命中后按真源下钻**（要逐字/要工具入参与结果的细节时）：
+   - 每个 `段.md` 头部有 `真源(source-of-truth):` 行（`tree.json` 里对应 `source_files`），指向该节点记录所属的**本机原始 `.jsonl` 绝对路径**，`节点段:` 行还附了 `uuid` 首末。
+   - **若真源在本机、可读**（即**你就是这份工作日志的所有者**）→ 顺着它回原始 jsonl 按 `uuid` 精确定位、读无损细节。
+   - **若那是别人的节点、源不在你机上** → 就以 `段.md` 为准（读不到别人的真源是正常的——这正是把真源指针写进 md 的意义：能下钻的人下钻，不能的人有 md 兜底）。
+
+一句话：**对话树 = 检索索引（先刷新再查）；原始 jsonl = 唯一真相（自己拥有才下钻）。** 真源指针（Point：`段.md` 头部）是二者之间的回程票。
+
+---
+
 ## 理念：不自创组织，镜像 Claude Code 原生会话 → 去重分支树
 
 记忆层 = **凡"够到本项目"的全部 Claude Code 会话的去重分支树镜像**：
@@ -158,15 +186,30 @@ verify 把结论分成两类，**别混为一谈**：
 
 ---
 
-## 跨框架（Codex / Cursor / 其他）
+## 跨框架（Claude Code / Codex / Cursor）
 
-> ⚠️ **现状：只有 Claude Code 能自动同步；Codex/Cursor 暂不支持自动入树**，需先写适配器（未完成）。
-> 原因：builder 只扫 `~/.claude/projects/`，且整棵树建在 CC 的 `uuid`/`parentUuid` 上；而 Codex 会话在
-> `~/.codex/sessions/.../rollout-*.jsonl`、记录是 `{timestamp,type,payload}`、**没有 uuid/parentUuid**
-> （分支靠 `forked_from_id`、轮次靠 `turn_id`）。直接跑 builder 扫不到 Codex 会话、会静默漏掉。
-> **在适配器就绪前**：用 Codex 干的活，要么手工整理一段记录、要么换到 Claude Code 跑一次收尾把它纳入。
+> ✅ **现状：三家（Claude Code / Codex / Cursor）都已支持自动入树**（2026-07-05 落地）。builder 切成
+> 「框架无关核心 + `scripts/adapters/` 每框架适配器」，用 `--adapters` 选源：
 
-将来落地路线（适配器待写，见 [`conversation-log-spec.md`](./conversation-log-spec.md) 第四/五节）：找到该工具的会话文件 → 写读取器解析成统一原语 → 复用 `render()` / `redact()`（见 [`../scripts/make_transcript_claudecode.py`](../scripts/make_transcript_claudecode.py)）→ 把工具特有的分支语义（如 `forked_from_id`/`turn_id`）映射成统一的"血脉"再拼去重树。
+```bash
+# 默认 = 全部已注册适配器（cc,codex,cursor）；也可显式限定
+python3 .claude/skills/team-collab/scripts/build_session_tree.py --person <你> --adapters cc,codex,cursor
+python3 .claude/skills/team-collab/scripts/verify_tree.py --person <你> --adapters cc,codex,cursor   # 校验要传同一集合
+```
+
+- **内部规范化格式 = CC 形状的记录 dict**：各适配器把本框架记录翻译成这形状（把 content 归一成
+  text/tool_use/tool_result），于是 `entries_from_objs`/`render`/去重树对三家通用、无需各写一套。
+- **Claude Code**：`~/.claude/projects/*.jsonl`，uuid/parentUuid 真实分叉树，marker+血脉发现。
+- **Codex**：`~/.codex/sessions/**/rollout-*.jsonl`，`session_meta.cwd`（+全会话 `turn_context.cwd`）归属、子目录上卷；
+  response_item 流映射；线性一会话一根；**Codex Desktop 导入的 CC 会话接成对应 CC 节点下 `分支（codex·…）`**
+  （`external_agent_session_imports.json`），worker 子线程接成父 Codex 节点下分支；剥 IDE 注入噪声、截断超大工具输出、流式读。
+- **Cursor**：`globalStorage/state.vscdb` 的 `composerData`/`bubbleId`（type 1=user/2=assistant），`workspace.json.folder`
+  归属；线性一 composer 一根；只读打开（防运行时锁）、解析异常降级为空、不崩。
+- **命名/回归**：CC 节点保持裸 `对话N（sid8）`（与旧产物字节一致）；Codex/Cursor 带 `codex·`/`cursor·` 前缀；
+  tree.json 非 CC 节点带 `source_tool` 字段。设计/数据/测试细节见 skill 的 [`docs/`](../docs/README.md)。
+
+> 加新框架：在 `scripts/adapters/` 加一个 `SourceAdapter`（discover/load/sid_of，产出 CC 形状 dict），
+> 在 `adapters/__init__.py` 注册即可，核心无需动。见 [`conversation-log-spec.md`](./conversation-log-spec.md) 第四/五节。
 
 ---
 
