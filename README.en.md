@@ -50,7 +50,7 @@ Tashan continuously publishes content around "interdisciplinary exchange x AI fo
 
 ## Included skills
 
-**9 skills**: the WeChat publishing chain, crawling/archival, plus a repo-agnostic team-collaboration skill.
+**10 skills**: the WeChat publishing chain, crawling/archival, plus a repo-agnostic team-collaboration + memory-recall pair.
 
 | Skill | Path | Purpose |
 |---|---|---|
@@ -62,9 +62,12 @@ Tashan continuously publishes content around "interdisciplinary exchange x AI fo
 | **article-image-styles** | [`skills/article-image-styles`](skills/article-image-styles/SKILL.md) | Manage the illustration style library (S01–S10). |
 | **article-review-tracker** | [`skills/article-review-tracker`](skills/article-review-tracker/SKILL.md) | Track editorial feedback and resolve it item by item. |
 | **wechat-article-crawler** | [`skills/wechat-article-crawler`](skills/wechat-article-crawler/SKILL.md) | Crawl/archive WeChat articles (6 methods + script); ships Tashan's own archived articles; upstream of the writing chain. |
-| **team-collab** | [`skills/team-collab`](skills/team-collab/SKILL.md) | Generic async team-collaboration + memory layer ("files as messages": posts/decisions, worklog, session archival / conversation tree); **repo-agnostic**, drops into any git project. |
+| **team-collab** | [`skills/team-collab`](skills/team-collab/SKILL.md) | Generic async team-collaboration + memory layer ("files as messages": posts/decisions, worklog, session archival / conversation tree); also the **engine + data** for memory recall (builds the conversation tree/vector store; retrieval scripts in `scripts/`); **repo-agnostic**, drops into any git project. |
+| **recall-memory** | [`skills/recall-memory`](skills/recall-memory/SKILL.md) | The **trigger shell** for memory recall: makes the AI proactively recall past conversations ("which session had that script/page/decision?") and teaches divergent reading; ships no scripts — a thin front-end over team-collab's retrieval engine. |
 
 **Chain**: `wechat-article-writer` (entry) → `document-pipeline` (engine) → (optional) `article-proofreading` + `ai-image-generator` (enhanced by `article-image-angles` / `article-image-styles`).
+
+**Memory pair (engine ↔ shell)**: `team-collab` (**engine + data**: conversation tree, vector store, retrieval scripts in `scripts/`) ↔ `recall-memory` (**trigger shell + protocol**: makes the AI proactively recall and teaches divergent reading). One-way dependency — `recall-memory` requires `team-collab`; `team-collab` works standalone.
 
 > Each skill is **self-contained**: `references/…`, `assets/…`, `templates/…` in a `SKILL.md` resolve relative to that skill's folder — keep each folder intact.
 

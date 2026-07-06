@@ -50,7 +50,7 @@
 
 ## 包含的 skill
 
-共 **9 个**：公众号发文链路 + 抓取归档 + 通用团队协作。
+共 **10 个**：公众号发文链路 + 抓取归档 + 通用团队协作 + 记忆召回。
 
 | Skill | 目录 | 作用 |
 |---|---|---|
@@ -62,7 +62,8 @@
 | **article-image-styles** | [`skills/article-image-styles`](skills/article-image-styles/SKILL.md) | 配图风格库管理（S01–S10 等） |
 | **article-review-tracker** | [`skills/article-review-tracker`](skills/article-review-tracker/SKILL.md) | 审稿意见结构化追踪、逐条落实 |
 | **wechat-article-crawler** | [`skills/wechat-article-crawler`](skills/wechat-article-crawler/SKILL.md) | 抓取/归档公众号文章（6 种方案 + 脚本），随附他山自有文章存档；发文链路的上游语料 |
-| **team-collab** | [`skills/team-collab`](skills/team-collab/SKILL.md) | 通用团队异步协作 + 记忆层（「文件即消息」发帖/决策留痕、工作日志、会话归档/对话树）；**仓库无关**，可落地任意 git 项目 |
+| **team-collab** | [`skills/team-collab`](skills/team-collab/SKILL.md) | 通用团队异步协作 + 记忆层（「文件即消息」发帖/决策留痕、工作日志、会话归档/对话树）；也是记忆召回的**引擎 + 数据**（建对话树/向量库、`scripts/` 里的检索脚本）；**仓库无关**，可落地任意 git 项目 |
+| **recall-memory** | [`skills/recall-memory`](skills/recall-memory/SKILL.md) | 记忆召回的**触发壳**：让 AI 在「上次那个脚本/网页/决定在哪个会话」时主动语义召回过去对话、并教它发散式读法；自己不带脚本，是 team-collab 检索引擎的一层薄前端 |
 
 **调用链**
 
@@ -74,6 +75,8 @@ wechat-article-writer（入口：手稿→排版）
 ```
 
 **上游**：`wechat-article-crawler` 抓取/归档公众号文章（含他山自有存档），为写作提供样本与语料。
+
+**记忆层配对（引擎 ↔ 触发壳）**：`team-collab`（**引擎 + 数据**：建对话树、建向量库、`scripts/` 里的 `build_memory_index.py`/`query_memory.py`/`memory_daemon.py`）↔ `recall-memory`（**触发壳 + 协议**：让 AI 在「回忆过去做过什么」时主动去检索，并教它发散式读法）。依赖单向——装 `recall-memory` 必须一起装 `team-collab`；`team-collab` 可独立用。
 
 > 每个 skill **自包含**：`SKILL.md` 里的 `references/…`、`assets/…`、`templates/…` 都相对该 skill 目录解析，整目录复制/软链即可用。
 
@@ -121,7 +124,7 @@ tashan-wechat-skills/
 ├── docs/
 │   ├── assets/tashan.svg     # 统一 Logo
 │   └── 使用与更新指南.md      # 面向智能体的详细用法
-├── skills/                   # 9 个自包含 skill（SKILL.md + references/ + assets/ + templates/）
+├── skills/                   # 10 个自包含 skill（SKILL.md + references/ + assets/ + templates/）
 ├── scripts/install.sh        # 安装到 skill 目录
 ├── manifest.yml              # skill 清单
 ├── CHANGELOG.md              # 版本变更（SemVer）
