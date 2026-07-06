@@ -11,10 +11,10 @@
   render  —— 原语 → 统一 md 格式（共享，可直接复用）
 
 用法：
-  python3 make_transcript_claudecode.py --person Boyuan                 # 当前会话($CLAUDE_CODE_SESSION_ID)
-  python3 make_transcript_claudecode.py --person Boyuan --session <sid>
-  python3 make_transcript_claudecode.py --person Boyuan --merge <sid1>,<sid2>,<sid3>
-  python3 make_transcript_claudecode.py --person Boyuan --out FILE | --stdout
+  python3 make_transcript_claudecode.py --person Alice                 # 当前会话($CLAUDE_CODE_SESSION_ID)
+  python3 make_transcript_claudecode.py --person Alice --session <sid>
+  python3 make_transcript_claudecode.py --person Alice --merge <sid1>,<sid2>,<sid3>
+  python3 make_transcript_claudecode.py --person Alice --out FILE | --stdout
   python3 make_transcript_claudecode.py --scan FILE         # 只扫描某文件里的敏感命中（不改文件）
 
 安全：默认不覆盖已存在文件（需 --force）；person 防路径穿越；缺 session-id 即退出。
@@ -56,13 +56,22 @@ def redact(text, counts):
     return _KV.sub(kv, text)
 
 # ───────────────────────── 渲染器（共享，可复用）─────────────────────────
-def render(entries, human, source_tool, sids, counts, extra_lines=None):
-    """entries: [{role, time, text, tools:[(name,input_str)], results:[str]}] → 统一 md"""
+def render(entries, human, source_tool, sids, counts, extra_lines=None, source_files=None):
+    """entries: [{role, time, text, tools:[(name,input_str)], results:[str]}] → 统一 md
+
+    source_files: 本机原始 .jsonl 的**绝对路径**列表 = 这份 md 回到「唯一真相」的回程票。
+      本 md 是去重整理后的**视图**；真源 jsonl 才是逐条原文。把真源路径写进头部，读者/agent 便可
+      顺着它回原始 jsonl 做无损重读。注意：路径是**该工作日志所有者的本机路径**——他人机上无此源时，
+      以本 md 为准（这正是「自己拥有才下钻、否则读 md」的依据）。"""
     times = [e["time"] for e in entries if e["time"]]
     hl = [
         "# 完整对话记录（统一格式）", "",
         f"> 来源工具: {source_tool}",
         f"> 会话(session): {', '.join(sids)}",
+    ]
+    if source_files:
+        hl.append(f"> 真源(source-of-truth): {' ; '.join(source_files)}")
+    hl += [
         f"> 参与者(human): {human}",
         f"> 时间: {min(times) if times else '?'} → {max(times) if times else '?'}",
     ]
@@ -237,7 +246,7 @@ def main():
             entries = read_claudecode([src])
             if not entries:
                 return
-            md, _ = render(entries, args.person, "Claude Code", sids, counts, extra)
+            md, _ = render(entries, args.person, "Claude Code", sids, counts, extra, source_files=[os.path.normpath(src)])
             os.makedirs(os.path.dirname(out), exist_ok=True)
             open(out, "w", encoding="utf-8").write(md)
             n += 1
@@ -292,11 +301,12 @@ def main():
         if not SID_RE.match(s):
             sys.exit(f"✗ session-id 非法：{s!r}")
 
-    entries = read_claudecode([find_jsonl(s) for s in sids])
+    src_paths = [os.path.normpath(find_jsonl(s)) for s in sids]
+    entries = read_claudecode(src_paths)
     if not entries:
         sys.exit("✗ 没解析到对话内容")
     counts = {}
-    md, total = render(entries, args.person, "Claude Code", sids, counts)
+    md, total = render(entries, args.person, "Claude Code", sids, counts, source_files=src_paths)
 
     if args.stdout:
         try:

@@ -57,7 +57,7 @@ id: 011
 
 > 全揉一块。
 
-> [Boyuan · 2026-06-17]
+> [Alice · 2026-06-17]
 > 一段话。
 EOF
 out=$(python3 "$CHECK" "$TMP/011-flat.md" 2>&1); rc=$?

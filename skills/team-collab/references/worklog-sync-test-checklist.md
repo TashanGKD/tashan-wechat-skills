@@ -117,7 +117,7 @@
 | BUG-9 段身份稳定性 | ✅ 已说明 | worklog.md：节点身份=段首时间戳；内部分叉留意重贴 |
 | BUG-11 main vs PR | ✅ 已定 | worklog.md：记忆层文档类，main 直推、不开 PR |
 | BUG-12 旧 README 漂移 | ✅ 已修 | `智能体工作日志/README.md` 重写为指针式、删死链 |
-| BUG-13 多person/AaronGrity | 🟡 部分 | git 样例已写；AaronGrity 身份注册待 Boyuan 确认 |
+| BUG-13 多person/Bob | 🟡 部分 | git 样例已写；Bob 身份注册待 Alice 确认 |
 | BUG-15 退出码管道吞 | ✅ 已说明 | worklog.md：查退出码别接管道 |
 | BUG-6 当前树陈旧失败 | ⏳ 待重建 | 用新 builder 重建即修绿（结构性4→0）；挑安静点做 |
 | BUG-2 Codex 走不通 | ⏳ P2 | worklog.md 已标"暂不支持自动同步"；适配器待写 |
@@ -134,7 +134,7 @@
 | BUG-3 | 🔴 | **verify 不是 commit-time 硬门**：坏/陈旧树能照样提交 | C6 D5 | `.githooks/pre-commit` 只 check_posts+check_entrypoints；verify_tree.self-test 是 hermetic（不查真实树） | 重建脚本对 EXIT≠0 阻止提交；或 pre-commit 在暂存了 `对话树/` 时跑 verify（但要处理"陈旧≠错"，见 BUG-7） |
 | BUG-4 | 🔴 | **脱敏无机器 gate**：唯一靠人工过目的高危环节、无字段清单 | E4 | `worklog.md:74` 铁律3 自承"命中0≠干净"；段.md 提交期无 PII 拦截 | 把终扫(手机/邮箱/微信/身份证/长号)做成 commit-time gate；给"重点扫报价/公司名/个人信息"清单 |
 | BUG-5 | 🟡 | **源会话被物理删→人写记忆变孤儿丢失**，无规则 | C1 | `worklog.md:30` 只说改名/增减无损，未覆盖"源删除" | 定规则：源删了，其节点+人写记忆是保留(沉进 `_旧归档/`)还是随之消失；写进 skill |
-| BUG-6 | 🔴 | **当前已提交树处于 verify 失败（陈旧）态**：47 条用户消息"遗漏"+断裂/重构 | E1 E2 B2 | `verify_tree.py --person Boyuan` EXIT=1；tree.json 01:00 建于 34 会话，现 --list 42；漏的 uuid 全属建树后新增会话（b55e36e9 等） | **重建即修**（非 builder bug）；但暴露"无 staleness 闸"——见 BUG-3/7 |
+| BUG-6 | 🔴 | **当前已提交树处于 verify 失败（陈旧）态**：47 条用户消息"遗漏"+断裂/重构 | E1 E2 B2 | `verify_tree.py --person Alice` EXIT=1；tree.json 01:00 建于 34 会话，现 --list 42；漏的 uuid 全属建树后新增会话（b55e36e9 等） | **重建即修**（非 builder bug）；但暴露"无 staleness 闸"——见 BUG-3/7 |
 
 ### B 类 · 文档 / 措辞歧义（改 skill）
 
@@ -146,7 +146,7 @@
 | BUG-10 | 🟡 | "待补"单字符串护栏脆弱：正文写"待补"二字会被误判未填、被覆盖 | E3 B4 | `build_session_tree.py:~344 "待补" not in c` |
 | BUG-11 | 🟡 | worklog 提交走 main 还是分支/PR，worklog.md 与 CONTRIBUTING.md 口径不一 | D2 D3 | `worklog.md:43` vs `CONTRIBUTING.md` |
 | BUG-12 | 🟡 | `智能体工作日志/README.md` 仍是旧"五件套"方案 + 2 条死链（已移 `_旧归档/`） | C6 | `智能体工作日志/README.md:11-19,81-82` |
-| BUG-13 | 🟡 | 多 person 无 git 命令样例；`AaronGrity/` 有目录未在画像注册（索引漂移、无 gate） | C2 C3 | `画像/README.md` 成员表无 Aaron；`智能体工作日志/AaronGrity/` 存在 |
+| BUG-13 | 🟡 | 多 person 无 git 命令样例；`Bob/` 有目录未在画像注册（索引漂移、无 gate） | C2 C3 | `画像/README.md` 成员表无 Aaron；`智能体工作日志/Bob/` 存在 |
 | BUG-14 | 🟡 | discover glob 固定深度 2 + marker 对 Codex 偏弱→可能漏深层/跨 fork 会话 | B5 C4 A11 | `build_session_tree.py:57 glob(PROJECTS,"*","*.jsonl")` |
 | BUG-15 | 🟢 | verify 退出码经管道(`| tail`)会被吞，skill 应提醒"查退出码别接管道" | D5 | `verify_tree.py:147 sys.exit(main())` 真返回 1（已澄清非脚本 bug） |
 

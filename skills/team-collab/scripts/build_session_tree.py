@@ -13,9 +13,9 @@
 要改改源或脚本重生成；只有 研究历程.md / 动机日志.md 是人写的"节点记忆"，脚本只脚手架、绝不覆盖。
 
 用法：
-  python3 build_session_tree.py --person Boyuan            # 默认源=当前会话所在的项目目录
-  python3 build_session_tree.py --person Boyuan --src ~/.claude/projects/<proj> --out <目录>
-  python3 build_session_tree.py --person Boyuan --keep-stubs   # 不剪枝（连无用户文本的死桩也建）
+  python3 build_session_tree.py --person Alice            # 默认源=当前会话所在的项目目录
+  python3 build_session_tree.py --person Alice --src ~/.claude/projects/<proj> --out <目录>
+  python3 build_session_tree.py --person Alice --keep-stubs   # 不剪枝（连无用户文本的死桩也建）
 """
 import argparse, glob, json, os, re, shutil, sys
 from collections import defaultdict
@@ -23,50 +23,21 @@ from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import make_transcript_claudecode as mt   # 复用 解析/脱敏/渲染
+import make_transcript_claudecode as mt   # 复用 脱敏/渲染（框架无关）
+from adapters import get_adapters          # 源适配器注册表（框架相关面：发现/解析）
 
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 PROJECTS = os.path.expanduser("~/.claude/projects")
-# 本仓库的标记：会话只要"够到本项目"（引用了仓库目录名 / 本 skill 路径）就算属于本项目，
-# 不论它存在哪个项目目录（cwd）下。标记是 ASCII，可直接在原始 jsonl 里 grep（中文是 \u 转义的，但路径名不是）。
+# 本仓库的标记：会话只要"够到本项目"（引用了仓库目录名）就算属于本项目，不论它存在哪个 cwd 下。
 REPO_MARKER = os.path.basename(REPO)   # 自动取当前仓库目录名，不写死项目
 
-def _uuids_of(f):
-    s = set()
-    try:
-        for ln in open(f, encoding="utf-8", errors="ignore"):
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                o = json.loads(ln)
-            except Exception:
-                continue
-            if o.get("uuid"):
-                s.add(o["uuid"])
-    except OSError:
-        pass
-    return s
-
+# 发现/解析已迁入 adapters/claudecode.py（Step 1 核心/适配器切分）。下面两个薄封装保持向后兼容
+# （verify_tree.py 仍调 B.discover_session_files / B.load_records），行为与迁移前逐字一致。
 def discover_session_files():
-    """扫 ~/.claude/projects/ 下**所有**项目目录，返回属于本仓库的会话 jsonl 路径（跨 cwd）。
-    两轮判定，确保不遗漏：
-      ① 内容引用了本仓库目录名（REPO_MARKER）的会话；
-      ② 与①**共享 uuid**（同一会话血脉：续接/分支会复制记录）的会话——捕捉**早于仓库命名**的
-         起源会话（其 transcript 里还没有仓库名，但记录被后续会话延续，否则会漏掉项目最初那几轮）。"""
-    allf = sorted(glob.glob(os.path.join(PROJECTS, "*", "*.jsonl")))
-    marker, rest = [], []
-    for f in allf:
-        try:
-            hit = REPO_MARKER in open(f, encoding="utf-8", errors="ignore").read()
-        except OSError:
-            hit = False
-        (marker if hit else rest).append(f)
-    known = set()
-    for f in marker:
-        known |= _uuids_of(f)
-    extra = [f for f in rest if _uuids_of(f) & known]
-    return sorted(marker + extra)
+    return get_adapters(["cc"])[0].discover(REPO)
+
+def load_records(paths):
+    return get_adapters(["cc"])[0].load(paths)
 
 def sanitize(s, n=20):
     s = re.sub(r"\s+", " ", (s or "").strip())
@@ -91,28 +62,6 @@ def read_zhaiyao(dir_path):
     if (not txt) or txt.startswith("⚠") or txt.startswith("（待"):
         return None
     return sanitize(mt.redact(txt, {}), 42)
-
-def load_records(paths):
-    """读给定的若干会话 jsonl（可跨项目目录），按 uuid 去重，返回 (objs_by_uuid, sessions_by_uuid)。
-    不同 cwd/目录的会话在这里被并到同一组记录里，再按 parentUuid 拼成一棵树——文件夹不进结构。"""
-    objs, sess = {}, defaultdict(set)
-    for f in paths:
-        sid = os.path.basename(f)[:-6]
-        for line in open(f, encoding="utf-8"):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                o = json.loads(line)
-            except Exception:
-                continue
-            u = o.get("uuid")
-            if not u:
-                continue
-            if u not in objs:
-                objs[u] = o
-            sess[u].add(sid)
-    return objs, sess
 
 def text_of(o):
     if not isinstance(o, dict):
@@ -159,7 +108,37 @@ def read_tasks(dir_path):
             out.append((lvl, text, ts))
     return out
 
+def apply_grafts(objs, sess):
+    """跨源接枝：带 _continues_external（Codex Desktop 导入的 CC 会话）/ _parent_thread（Codex worker 子线程）
+    的会话根，把 parentUuid 指到"目标会话时间戳最晚的记录"→ 建树时它成为目标节点下的分支。
+    **build 与 verify 都调用**（否则 verify 用未接枝的源重构，会与已接枝的树对不上 → 假 🔴）。
+    目标未加载（marker 没命中 / 不在 --adapters / 跨项目）→ 保持原生根、不丢。CC-only 时 objs 无这两种元键→空转。
+    返回接枝数。"""
+    def _last_rec_of(target_sid):
+        cands = [u for u in objs if target_sid in sess.get(u, ())]
+        return max(cands, key=lambda u: objs[u].get("timestamp") or "") if cands else None
+    n = 0
+    for u, o in list(objs.items()):
+        if o.get("parentUuid"):
+            continue
+        ext = o.get("_continues_external") or o.get("_parent_thread")
+        if not ext:
+            continue
+        r = ext.get("ref")
+        ref = r.get("sid") if isinstance(r, dict) else r
+        anchor = _last_rec_of(ref) if ref else None
+        if anchor and anchor != u and o.get("_session_id") not in sess.get(anchor, ()):
+            o["parentUuid"] = anchor
+            n += 1
+    return n
+
+
 def main():
+    try:   # GBK 控制台下 ✓/🔴 等 Unicode print 会 UnicodeEncodeError（实测：末行报喜 print 崩、退出码变非0、
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # 看着像失败其实树已写完）。重配 utf-8+replace。
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser(description="重建去重分支树 → A 布局 + tree.json + TREE.md + 思维导图.md")
     ap.add_argument("--person", required=True)
     ap.add_argument("--src", help="只扫这一个项目目录（默认：跨所有项目目录收齐引用本仓库的会话）")
@@ -169,7 +148,13 @@ def main():
     ap.add_argument("--out", help="输出目录（默认 团队协作记录/智能体工作日志/<person>/对话树）")
     ap.add_argument("--list", action="store_true", help="只列出判定为属于本项目的会话（建树前过目防误收），不生成")
     ap.add_argument("--keep-stubs", action="store_true", help="不剪枝：连无用户文本的死桩也建")
+    ap.add_argument("--adapters", help="限定源适配器（逗号分隔，如 cc / cc,codex）。默认全部已注册的。"
+                    "黄金回归固定用 --adapters cc 复现纯 CC 树。")
     ap.add_argument("--with-subagents", action="store_true", help="把每个会话的子智能体镜像到其归属节点")
+    ap.add_argument("--if-stale", action="store_true",
+                    help="快捷档：先秒比对现有 tree.json 与源会话的新鲜度（stat mtime + 新增 session），"
+                         "只有发现新增会话 / 有会话在上次建树后增长时才重建，否则直接跳过、省去全量重建。"
+                         "默认不传 = 无条件全量重建（最稳；快照会过期，别信快照）。")
     args = ap.parse_args()
 
     if not mt.PERSON_RE.match(args.person):
@@ -177,28 +162,76 @@ def main():
 
     out = args.out or os.path.join(REPO, "团队协作记录", "智能体工作日志", args.person, "对话树")
 
-    # 取源：默认跨**所有**项目目录收齐"引用了本仓库"的会话（与 cwd/文件夹无关）；--src 仍可只扫单个目录
-    if args.src:
-        files = sorted(glob.glob(os.path.join(args.src, "*.jsonl")))
-    else:
-        files = discover_session_files()
+    # 取源：遍历选定的源适配器，**各自** discover + load 属于本项目的会话（跨 cwd / 跨框架）。
+    # 关键：每适配器的文件必须过它自己的 load（Codex rollout 不是 CC jsonl，混一起用 CC load 会全丢）。
+    adapters = get_adapters([a.strip() for a in args.adapters.split(",")] if args.adapters else None)
+    disc = [(ad, ad.discover(REPO, src=args.src)) for ad in adapters]   # [(适配器, [会话文件])]
     if args.manifest:
         keep = {ln.strip() for ln in open(args.manifest, encoding="utf-8") if ln.strip() and not ln.startswith("#")}
-        files = [f for f in files if os.path.basename(f)[:-6] in keep]
-        print(f"  manifest 固定：从清单 {len(keep)} 个 session-id 中匹配到 {len(files)} 个会话")
+        disc = [(ad, [f for f in fs if ad.sid_of(f) in keep]) for ad, fs in disc]
+        n = sum(len(fs) for _, fs in disc)
+        print(f"  manifest 固定：从清单 {len(keep)} 个 session-id 中匹配到 {n} 个会话")
+    files = sorted(set(f for _, fs in disc for f in fs))
     if not files:
         sys.exit(f"✗ 没发现引用本仓库（{REPO_MARKER}）的会话")
 
     if args.list:
-        print(f"判定为属于本项目（引用了 {REPO_MARKER}）的会话，共 {len(files)} 个：")
-        for f in files:
-            proj = os.path.basename(os.path.dirname(f)); sid = os.path.basename(f)[:-6]
-            print(f"  [{proj}] {sid}")
+        print(f"判定为属于本项目的会话，共 {len(files)} 个：")
+        for ad, fs in disc:
+            for f in fs:
+                print(f"  [{ad.name}] {ad.sid_of(f)}")
         return 0
 
-    objs, sess = load_records(files)
+    # sid → 本机真源 .jsonl 绝对路径（写进 段.md 真源指针 + tree.json）。每适配器用自己的 sid_of。
+    sid2path = {}
+    mtimes = {}   # 会话"文件" → mtime（Cursor 的"文件"是 composerId 令牌、非路径 → 用适配器 mtime_of，别裸 getmtime）
+    for ad, fs in disc:
+        for f in fs:
+            sid2path[ad.sid_of(f)] = f
+            mtimes[f] = ad.mtime_of(f)
+
+    # --if-stale：秒级新鲜度检查（stat，不全量解析）——治「拿了张过期快照就直接用」的坑。
+    # 判据：有源会话在上次建树（tree.json mtime）之后被改过，或出现了树里没有的新 session → 陈旧 → 重建；
+    # 否则跳过。默认不传该 flag = 无条件全量重建（最稳）。
+    if args.if_stale:
+        tj = os.path.join(out, "tree.json")
+        if os.path.exists(tj):
+            try:
+                prev = json.load(open(tj, encoding="utf-8"))
+                prev_sids = set()
+                for nd in prev.get("节点", []):
+                    prev_sids |= set(nd.get("sessions", []))
+                tj_mtime = os.path.getmtime(tj)
+                new_sessions = sorted(s for s in sid2path if s not in prev_sids)
+                grown = [f for f in files if mtimes.get(f, 0.0) > tj_mtime]
+                if not new_sessions and not grown:
+                    print(f"✓ --if-stale：对话树已是最新（{len(files)} 个源会话都未变、无新增）→ 跳过重建。")
+                    print(f"  树：{os.path.relpath(out, REPO)}（上次生成 {prev.get('生成时间', '?')}）")
+                    return 0
+                why = []
+                if new_sessions:
+                    why.append(f"{len(new_sessions)} 个新会话")
+                if grown:
+                    why.append(f"{len(grown)} 个会话有增长")
+                print(f"  --if-stale：检测到陈旧（{'、'.join(why)}）→ 全量重建。")
+            except Exception as e:
+                print(f"  --if-stale：读旧 tree.json 失败（{e}）→ 保险起见全量重建。")
+        else:
+            print("  --if-stale：无现有 tree.json → 首次全量重建。")
+
+    objs, sess = {}, defaultdict(set)
+    for ad, fs in disc:
+        o, s = ad.load(fs)
+        objs.update(o)
+        for k, v in s.items():
+            sess[k] |= v
     if not objs:
         sys.exit("✗ 没读到记录")
+
+    # 跨源接枝（决策②/子线程）——build 与 verify 共用 apply_grafts，保证重构一致。
+    _grafted = apply_grafts(objs, sess)
+    if _grafted:
+        print(f"  跨源接枝：{_grafted} 个会话接成目标节点下的分支（Codex 导入/worker 子线程）")
 
     # 建 children / roots
     children = defaultdict(list); roots = []
@@ -209,27 +242,41 @@ def main():
         children[u].sort(key=lambda x: objs[x].get("timestamp") or "")
     roots.sort(key=lambda x: objs[x].get("timestamp") or "")
 
-    # 剪枝：标记"子树是否含用户文本"
+    # 剪枝：标记"子树是否含用户文本"（生效判据是下面内联的 mine，见 has_txt）
     has_txt = {}
-    def is_user_text(u):
-        return objs[u].get("message", {}).get("role") == "user" and bool(text_of(u and objs[u]).strip()) \
-            and "tool_result" not in json.dumps(objs[u].get("message", {}).get("content", ""))
     for r in roots:                       # 迭代后序
         order, stack = [], [r]
         while stack:
             x = stack.pop(); order.append(x); stack.extend(children.get(x, []))
         for x in reversed(order):
-            mine = (objs[x].get("message", {}).get("role") == "user") and bool(mt._strip_noise(text_of(objs[x])).strip())
+            # 线性源（Codex/Cursor）：整条会话就是真实对话，无"死桩子树"可剪——全保活，否则最后一个用户轮之后的
+            # agent 回答 + 工具往返（尾链）会被 CC 的剪枝语义误删（实测踩过：15 条会话只剩 1 条）。CC 判据不变→回归不变。
+            is_linear = objs[x].get("_source_tool", "Claude Code") != "Claude Code"
+            mine = is_linear or ((objs[x].get("message", {}).get("role") == "user") and bool(mt._strip_noise(text_of(objs[x])).strip()))
             has_txt[x] = mine or any(has_txt.get(c, False) for c in children.get(x, []))
     def kids(u):
         cs = children.get(u, [])
         return cs if args.keep_stubs else [c for c in cs if has_txt.get(c, False)]
 
     def walk_seg(start):
+        # 段不跨来源工具、也不跨 session（接枝点）：让 CC→Codex 导入、Codex→Codex worker 子线程都成为真正的分支，
+        # 而非并进本段。CC 无 _source_tool/_session_id（都取默认/None）→ 从不触发 → 与重构前一致。
         seg = [start]; cur = start
+        st0 = objs[start].get("_source_tool", "Claude Code")
+        sid0 = objs[start].get("_session_id")
         while len(kids(cur)) == 1:
-            cur = kids(cur)[0]; seg.append(cur)
+            nxt = kids(cur)[0]
+            if objs[nxt].get("_source_tool", "Claude Code") != st0 or objs[nxt].get("_session_id") != sid0:
+                break
+            cur = nxt; seg.append(cur)
         return seg, kids(cur)
+
+    TOOL_PREFIX = {"Claude Code": "", "Codex": "codex·", "Cursor": "cursor·"}
+    def _tag(seg):
+        # 节点目录括注 = 首个 session 前 8 位（与重构前一致：多 session 也取 ss[0][:8]，不是 Nsess——
+        # Nsess 只用于 TREE.md 的内部 sid8 显示，不是目录名）。CC 前缀空→逐字节不变；Codex/Cursor 带 tool 前缀。
+        ss = sorted(set().union(*[sess[u] for u in seg]))
+        return TOOL_PREFIX.get(objs[seg[0]].get("_source_tool", "Claude Code"), "") + ss[0][:8]
 
     # 遍历，分配编号 + 落盘
     counts = {}; nodes = []; mer_nodes = []; mer_edges = []; tree_lines = []; catalog_lines = []
@@ -240,6 +287,7 @@ def main():
         # 时间戳非严格单调时再排序会打乱真实因果顺序、与原始会话错配（verify_tree.py 会抓）。
         ss = sorted(set().union(*[sess[u] for u in seg]))
         sid8 = ss[0][:8] if len(ss) == 1 else f"{len(ss)}sess"
+        st = objs[seg[0]].get("_source_tool", "Claude Code")   # 本节点来源工具
         t0 = (objs[seg[0]].get("timestamp") or "")[:16]
         t1 = (objs[seg[-1]].get("timestamp") or "")[:16]
         summ = ""; has_user = False
@@ -253,8 +301,16 @@ def main():
         os.makedirs(dir_path, exist_ok=True)
         # 段.md（复用 mt 解析+脱敏+渲染）
         entries = mt.entries_from_objs([objs[u] for u in seg])
-        extra = [f"树节点: {alias}", f"涉及 session: {', '.join(ss)}", f"节点段: {len(seg)} 条记录"]
-        md, _ = mt.render(entries, args.person, "Claude Code", ss, counts, extra)
+        # 本节点的真源 = 其记录所属 session 的本机 .jsonl（续接拷贝会让同一节点落在多个 sid 上，全列）。
+        # 会话级绝对路径 + uuid 首末（可选粒度）：足以回到原始文件按 uuid 精确定位、无损重读。
+        # CC：真源=会话文件（sid2path 反查，保持原样→回归不变）；Codex/Cursor：用记录自带的 _source_file
+        if st == "Claude Code":
+            src_files = [os.path.normpath(sid2path.get(s, os.path.join(PROJECTS, "*", s + ".jsonl"))) for s in ss]
+        else:
+            src_files = sorted(set(os.path.normpath(objs[u]["_source_file"]) for u in seg if objs[u].get("_source_file")))
+        extra = [f"树节点: {alias}", f"涉及 session: {', '.join(ss)}",
+                 f"节点段: {len(seg)} 条记录 · uuid {seg[0][:8]}…{seg[-1][:8]}"]
+        md, _ = mt.render(entries, args.person, st, ss, counts, extra, source_files=src_files)
         open(os.path.join(dir_path, "段.md"), "w", encoding="utf-8").write(md)
         # 研究历程（含「摘要」行）/ 动机：脚手架，不覆盖已写的
         # 桥接段（无用户实质文本 = 纯续接/工具段）自动写成"空桥接"完整内容，不算待补、不需人工补；
@@ -308,10 +364,14 @@ def main():
         if parent_mer:
             mer_edges.append((parent_mer, mid))
         tree_lines.append(f"{'  '*depth}- **{alias}** · {label} `[{t0}→{t1}]` ({sid8}) — [段]({rel}/段.md) · [研究历程]({rel}/研究历程.md)")
-        nodes.append({"alias": alias, "dir": rel, "sessions": ss, "t0": t0, "t1": t1,
-                      "n_records": len(seg), "摘要": label, "auto_summary": summ, "children": len(ch),
-                      "parent_dir": os.path.relpath(os.path.dirname(dir_path), out).replace(os.sep, "/") if depth else None,
-                      "uuids": list(seg)})   # 段内 uuid 有序序列：供 verify_tree.py 校验覆盖/连续/可重构
+        _node = {"alias": alias, "dir": rel, "sessions": ss, "t0": t0, "t1": t1,
+                 "n_records": len(seg), "摘要": label, "auto_summary": summ, "children": len(ch),
+                 "parent_dir": os.path.relpath(os.path.dirname(dir_path), out).replace(os.sep, "/") if depth else None,
+                 "source_files": src_files,   # 本节点真源 .jsonl 绝对路径：tree.json 作机器索引，供按真源下钻
+                 "uuids": list(seg)}   # 段内 uuid 有序序列：供 verify_tree.py 校验覆盖/连续/可重构
+        if st != "Claude Code":
+            _node["source_tool"] = st   # 非 CC 节点标来源工具；CC 省略以保持回归字节一致
+        nodes.append(_node)
         # —— 目录：章=节点（按树嵌套）；章内=该节点任务目录，叶子按时间戳自动算行号、生成跳转链 ——
         ts2line = {}
         for i, ln in enumerate(md.split("\n"), 1):
@@ -328,7 +388,7 @@ def main():
             catalog_lines.append(f"{'  '*(depth + 1 + lvl)}- {ttext}{jump}")
         # 递归子分支
         for i, c in enumerate(ch, 1):
-            emit(c, f"{alias}-分支{i}", os.path.join(dir_path, f"分支{i}（{(sorted(set().union(*[sess[u] for u in walk_seg(c)[0]]))[0])[:8]}）"), depth + 1, mid)
+            emit(c, f"{alias}-分支{i}", os.path.join(dir_path, f"分支{i}（{_tag(walk_seg(c)[0])}）"), depth + 1, mid)
 
     # 重建前：按"段身份"快照所有**已填**的 研究历程/动机（与路径/别名无关），随后整树 rmtree 清掉旧结构与孤儿，
     # 重建时在 emit 里据段身份贴回——使重建对已填内容**无损**、且不留旧别名孤儿目录。
@@ -366,8 +426,7 @@ def main():
         if not has_txt.get(r, False) and not args.keep_stubs:
             continue
         rn += 1
-        sid8 = sorted(set().union(*[sess[u] for u in walk_seg(r)[0]]))[0][:8]
-        emit(r, f"对话{rn}", os.path.join(out, f"对话{rn}（{sid8}）"), 0, None)
+        emit(r, f"对话{rn}", os.path.join(out, f"对话{rn}（{_tag(walk_seg(r)[0])}）"), 0, None)
 
     # tree.json
     json.dump({"生成时间": datetime.now().strftime("%Y-%m-%d %H:%M"), "源": f"{len(files)} 个引用本仓库的会话（跨项目目录/cwd）",
@@ -435,7 +494,11 @@ def main():
     bak = out + ".bak"   # 重建已完整落盘，安全删除暂存的旧树
     if os.path.exists(bak):
         shutil.rmtree(bak)
-    print(f"✓ 树已生成 → {os.path.relpath(out, REPO)}")
+    try:
+        _rel = os.path.relpath(out, REPO)
+    except ValueError:
+        _rel = out   # --out 与 REPO 跨盘（如测试建到别的盘）→ 直接用绝对路径，不崩
+    print(f"✓ 树已生成 → {_rel}")
     print(f"  源：{len(files)} 个引用本仓库的会话（跨项目目录）· 去重唯一节点 {len(objs)} · 对话 {rn} · 树节点 {len(nodes)}")
     mt.report(counts)
     print("  提醒：生成物勿手改；研究历程/动机日志 人工补；脱敏报告过目后再提交。", file=sys.stderr)
@@ -447,6 +510,8 @@ def main():
         vargs += ["--src", args.src]
     if args.manifest:
         vargs += ["--manifest", args.manifest]
+    if args.adapters:
+        vargs += ["--adapters", args.adapters]
     try:
         r = subprocess.run(vargs, capture_output=True, text=True)
         print("\n── 建后自检（verify_tree）──")

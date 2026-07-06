@@ -13,9 +13,9 @@
 `团队协作记录/智能体工作日志/`（与 make_transcript_claudecode.py 同约定）。
 
 用法（可在仓库任意目录运行）：
-  python3 .claude/skills/team-collab/scripts/worklog.py --person Boyuan --summary "今天做了……"
-  python3 .claude/skills/team-collab/scripts/worklog.py --person Boyuan --summary-file /tmp/s.md --topic 合同与协作体系
-  echo "总结正文" | python3 .claude/skills/team-collab/scripts/worklog.py --person Boyuan
+  python3 .claude/skills/team-collab/scripts/worklog.py --person Alice --summary "今天做了……"
+  python3 .claude/skills/team-collab/scripts/worklog.py --person Alice --summary-file /tmp/s.md --topic 合同与协作体系
+  echo "总结正文" | python3 .claude/skills/team-collab/scripts/worklog.py --person Alice
 
 约定：
   - 你（智能体）必须用自己的"声明身份"作为 --person（你代表谁就填谁），这决定写进谁的文件夹。
@@ -104,7 +104,7 @@ def append_entry(log, sid, summary):
 
 def main():
     ap = argparse.ArgumentParser(description="智能体工作日志归档（按 session 锚定，append 不覆盖）")
-    ap.add_argument("--person", required=True, help="你代表谁（声明身份），决定写进谁的文件夹，如 Boyuan")
+    ap.add_argument("--person", required=True, help="你代表谁（声明身份），决定写进谁的文件夹，如 Alice")
     ap.add_argument("--summary", help="当天工作总结正文")
     ap.add_argument("--summary-file", help="从文件读总结正文")
     ap.add_argument("--topic", help="新建日志时的主题名（仅首次创建用）")

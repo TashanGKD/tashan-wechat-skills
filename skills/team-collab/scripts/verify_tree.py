@@ -20,8 +20,8 @@
 这样 live 会话期间"陈旧"不会误拦提交；只有真错配才 fail-closed。
 
 用法：
-  python3 verify_tree.py --person Boyuan            # 校验该人对话树
-  python3 verify_tree.py --person Boyuan --strict   # 陈旧也算失败（要求树完全最新）
+  python3 verify_tree.py --person Alice            # 校验该人对话树
+  python3 verify_tree.py --person Alice --strict   # 陈旧也算失败（要求树完全最新）
   python3 verify_tree.py --tree <目录> --src <项目目录>   # 自测/指定源
 """
 import argparse, json, os, re, sys
@@ -40,23 +40,33 @@ def is_user_text(o):
 
 
 def load_source(args):
-    if args.src:
-        files = sorted(B.glob.glob(os.path.join(args.src, "*.jsonl")))
-    else:
-        files = B.discover_session_files()
+    """经**所有选定适配器**发现+解析源记录（跨框架），与建树端一致——否则 Codex 节点 uuid 会被当"幽灵"。"""
+    from adapters import get_adapters
+    adapters = get_adapters([a.strip() for a in args.adapters.split(",")] if getattr(args, "adapters", None) else None)
+    keep = None
     if args.manifest:
         keep = {ln.strip() for ln in open(args.manifest, encoding="utf-8")
                 if ln.strip() and not ln.startswith("#")}
-        files = [f for f in files if os.path.basename(f)[:-6] in keep]
-    return B.load_records(files)
+    objs, sess = {}, B.defaultdict(set)
+    for ad in adapters:
+        fs = ad.discover(B.REPO, src=args.src)
+        if keep is not None:
+            fs = [f for f in fs if ad.sid_of(f) in keep]
+        o, s = ad.load(fs)
+        objs.update(o)
+        for k, v in s.items():
+            sess[k] |= v
+    B.apply_grafts(objs, sess)   # 与建树端一致地接枝，否则跨源分支会被误判 断裂/接缝
+    return objs, sess
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--person", default="Boyuan")
+    ap.add_argument("--person", required=True)
     ap.add_argument("--tree", help="对话树目录（默认按 --person 推断）")
     ap.add_argument("--src", help="只从这个项目目录取源（自测用；默认跨目录 discover）")
     ap.add_argument("--manifest", help="与建树一致的会话清单（建树用了就传同一个）")
+    ap.add_argument("--adapters", help="与建树一致的源适配器集合（如 cc / cc,codex）；默认全部已注册的")
     ap.add_argument("--strict", action="store_true", help="陈旧也算失败（退出码 1）")
     args = ap.parse_args()
 
