@@ -65,10 +65,13 @@ def main():
     ap.add_argument("--person", required=True)
     ap.add_argument("--tree", help="对话树目录（默认按 --person 推断）")
     ap.add_argument("--src", help="只从这个项目目录取源（自测用；默认跨目录 discover）")
+    ap.add_argument("--repo", help="显式指定项目根（与建树端一致；覆盖由安装路径反推的默认）")
     ap.add_argument("--manifest", help="与建树一致的会话清单（建树用了就传同一个）")
     ap.add_argument("--adapters", help="与建树一致的源适配器集合（如 cc / cc,codex）；默认全部已注册的")
     ap.add_argument("--strict", action="store_true", help="陈旧也算失败（退出码 1）")
     args = ap.parse_args()
+    if args.repo:                                  # 与建树端一致：显式项目根覆盖安装路径反推
+        B.REPO = os.path.abspath(os.path.expanduser(args.repo))
 
     tree = args.tree or os.path.join(B.REPO, "团队协作记录", "智能体工作日志", args.person, "对话树")
     tj = os.path.join(tree, "tree.json")
