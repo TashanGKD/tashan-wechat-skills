@@ -33,3 +33,6 @@ skills:
   - id: team-collab
     category: collaboration
     entrypoint: skills/team-collab/SKILL.md
+  - id: recall-memory
+    category: collaboration
+    entrypoint: skills/recall-memory/SKILL.md
