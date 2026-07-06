@@ -8,6 +8,7 @@
   - tree.json     ← 机器源（单一真源，其它视图由它生成）
   - TREE.md       ← 嵌套列表索引
   - 思维导图.md   ← Mermaid 流程图（GitHub 原生渲染、节点可点击跳转）
+  - 思维画布.html ← 交互式指令级思维画布（**可选**，加 --mindmap-html 才生成；见 build_mindmap_html.py）
 
 随对话增多，**重跑即长大**。生成物（段.md/TREE/思维导图/tree.json）一律**别手改**——
 要改改源或脚本重生成；只有 研究历程.md / 动机日志.md 是人写的"节点记忆"，脚本只脚手架、绝不覆盖。
@@ -130,6 +131,55 @@ def apply_grafts(objs, sess):
         if anchor and anchor != u and o.get("_session_id") not in sess.get(anchor, ()):
             o["parentUuid"] = anchor
             n += 1
+
+    # ── CC 压缩续接接枝 ──────────────────────────────────────────────
+    # CC 上下文自动压缩(ran out of context)时会开一个**新 session**，其首条是一段
+    # 「This session is being continued from a previous conversation…」摘要，且 **parentUuid=None、
+    # 不带任何指回原会话的 uuid**（压缩机制的固有断裂）。于是续接尾巴在 uuid 层与前情断开、
+    # 又被去重把前半拆到更早的节点，最终成了**孤儿续接根**（实测本仓库 63 根里有 10 个）。
+    # 修法：链首是压缩摘要时，把它接到"原会话（摘要末尾常点名 <sid>.jsonl，取不到则用自身 session）里、
+    # 时间早于本摘要的最后一条记录"——即前情节点的叶子 → 建树时它就成了真父节点下的分支。
+    def _txt(o):
+        c = (o.get("message") or {}).get("content")
+        if isinstance(c, str):
+            return c
+        if isinstance(c, list):
+            return " ".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
+        return ""
+    SID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl")
+    MARK = "This session is being continued from a previous conversation"
+    kids = defaultdict(list)                        # 建反向索引，用于排除"续接自身子树"（防成环/自接）
+    for u, o in objs.items():
+        pu = o.get("parentUuid")
+        if pu in objs:
+            kids[pu].append(u)
+    def _subtree(r):
+        seen, st = set(), [r]
+        while st:
+            x = st.pop()
+            if x in seen:
+                continue
+            seen.add(x); st.extend(kids.get(x, ()))
+        return seen
+    grafted_roots = set()
+    for su, so in list(objs.items()):
+        if MARK not in _txt(so)[:240]:             # 注意：压缩摘要往往不是链首，其上还挂着 meta 链首
+            continue
+        root = su; guard = 0                        # 从摘要上溯到链首（parentUuid 不在 objs = 到顶）
+        while objs.get(root, {}).get("parentUuid") in objs and guard < 500:
+            root = objs[root]["parentUuid"]; guard += 1
+        if root in grafted_roots:
+            continue
+        origins = set(SID_RE.findall(_txt(so))) | set(sess.get(su, ()))
+        ref = so.get("timestamp") or ""             # 锚点须早于本摘要（=压缩边界）→ 只能落在前情节点
+        own = _subtree(root)                        # 排除续接自身子树
+        cands = [v for v in objs if v not in own and (set(sess.get(v, ())) & origins)
+                 and (objs[v].get("timestamp") or "") < ref]
+        if not cands:
+            continue
+        anchor = max(cands, key=lambda v: objs[v].get("timestamp") or "")
+        objs[root]["parentUuid"] = anchor           # 接链首到前情叶子 → 整个续接子树成前情节点下的分支
+        grafted_roots.add(root); n += 1
     return n
 
 
@@ -151,6 +201,9 @@ def main():
     ap.add_argument("--out", help="输出目录（默认 团队协作记录/智能体工作日志/<person>/对话树）")
     ap.add_argument("--list", action="store_true", help="只列出判定为属于本项目的会话（建树前过目防误收），不生成")
     ap.add_argument("--keep-stubs", action="store_true", help="不剪枝：连无用户文本的死桩也建")
+    ap.add_argument("--mindmap-html", action="store_true",
+                    help="建树后顺带写出「会话思维画布」视图（对话树/思维画布.html + serve.py，几十 KB 纯渲染器，运行时现读 段.md、不内嵌文字）。"
+                         "可选（默认不建）。查看：cd 对话树 && python serve.py。等价于事后单跑 build_mindmap_html.py。")
     ap.add_argument("--adapters", help="限定源适配器（逗号分隔，如 cc / cc,codex）。默认全部已注册的。"
                     "黄金回归固定用 --adapters cc 复现纯 CC 树。")
     ap.add_argument("--with-subagents", action="store_true", help="把每个会话的子智能体镜像到其归属节点")
@@ -548,6 +601,16 @@ def main():
             print("⚠️ 结构性问题未清——**别提交这棵树**，请按上面排查（陈旧不算，🔴 才算）。", file=sys.stderr)
     except Exception as e:
         print(f"（建后自检未跑：{e}）", file=sys.stderr)
+
+    # 可选：生成交互式思维画布视图（对话树/思维画布.html）——同 思维导图.md 是 tree.json 的视图，只是更强
+    if getattr(args, "mindmap_html", False):
+        try:
+            r2 = subprocess.run([sys.executable, os.path.join(HERE, "build_mindmap_html.py"), "--tree", out],
+                                capture_output=True, text=True)
+            print("\n── 思维画布（可选视图）──")
+            print((r2.stdout or r2.stderr).strip())
+        except Exception as e:
+            print(f"（思维画布未生成：{e}）", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
