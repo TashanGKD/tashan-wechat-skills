@@ -8,7 +8,8 @@ description: >-
   更新工作日志、把会话（含子智能体）按去重分支树（"对话树"）镜像进记忆层、整理可跳转的工作总目录 /
   思维导图、补写节点的研究历程 / 动机。触发场景包括用户说"回复 XX 的帖子 / 在团队协作记录里发帖 /
   记一下这个决策 / 这事该问谁 / 看看协作记录 / 我代表某人（如 Alice）留个言 / 更新工作日志 / 收尾 / 把这次会话归档 /
-  整理对话树 / 看看一共做了什么 / 把这段对话整理进记忆层"。即使用户没明说"协作记录"，只要涉及多人或人机
+  整理对话树 / 看看一共做了什么 / 把这段对话整理进记忆层 / 生成对话续接包 / 换框架或换账号继续某条对话 /
+  回顾项目工作找 xx 相关的对话 / 找出所有关于 xx 的会话列个表"。即使用户没明说"协作记录"，只要涉及多人或人机
   异步沟通、留痕、决策归属、工作日志、把对话沉淀进记忆层，都应使用本 skill。
   **另外——凡是要"读 / 查 / 找本地历史对话记录"的场景，务必用本 skill**（触发词如"帮我找那个会话 /
   我以前在哪做过 X / 回顾一下之前的对话 / 去本地翻聊天记录 / 找找历史里有没有做过 Y / 上次那个网页/脚本是哪个会话做的"）：
@@ -40,6 +41,7 @@ description: >-
 | **收尾 / 归档会话 / 记忆层**（记忆层 = 本地会话的**去重分支树镜像**、一条命令 `build_session_tree.py` 重生成「对话树」、每节点配研究历程/动机、Mermaid 思维导图） | [`references/worklog.md`](./references/worklog.md) |
 | **读 / 查 / 找本地历史对话记录**（"帮我找那个会话 / 我以前在哪做过 X / 回顾之前的对话 / 上次那个网页是哪个会话做的"）——**先刷新对话树、再在工作日志里检索、命中后按真源指针下钻**，别裸 grep jsonl（见下「地基五」） | [`references/worklog.md`](./references/worklog.md)（§读协议） |
 | **把对话转成「完整对话记录」统一格式**（格式定义、转化要求、脱敏规则、给其他框架写适配器；头部含指向原始 jsonl 的**真源指针**） | [`references/conversation-log-spec.md`](./references/conversation-log-spec.md)（脚本在 [`scripts/`](./scripts/)） |
+| **生成对话「续接包」/ 换框架换账号继续某条对话**（把任意一条对话**从根整条** compact 成即开即用的交接包，供在新会话/新框架/新账号里粘贴续接——`pack_conversation.py` 打包 → 派子智能体用 compaction 模板总结 → 套续接壳。**定位要续的那条**有两入口：A 看思维画布点复制节点起点的 session-id；B 用户说"回顾项目工作找 xx 相关的对话"→ `find_conversations.py` 出表格〔session-id｜总结｜最近3个完整交互〕） | [`references/conversation-handoff.md`](./references/conversation-handoff.md)（脚本 `scripts/pack_conversation.py`、`scripts/find_conversations.py`） |
 
 > **在任何新仓库首次落地本协作法**（一次性 bootstrap）：① 该项目须是 git 仓库、且有 `CONTRIBUTING.md`（git 规范）；② 建 `团队协作记录/README.md`（沟通范式 + 话题索引表）与 `团队协作记录/画像/README.md`（「找谁负责」速查表 + 成员画像）；③ 启用格式 gate：`git config core.hooksPath .githooks`（gate 由本 skill `scripts/` 下的 `check_posts.py`/`check_entrypoints.py`/`check_pii.py` 校验，hook 接法见 `references/posting.md`）。之后按下表日常使用——帖子格式会被自动校验，不合模板会被拦下。
 >
