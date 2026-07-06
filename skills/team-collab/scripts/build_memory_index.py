@@ -205,7 +205,8 @@ def main():
 
     ve.clear_orphan_hnsw(vec_dir)   # 清孤儿 pickle（缺 .bin），令建后"直接查询"能据 sqlite 重建索引、可查
     print(f"✓ 记忆向量库就绪：{os.path.relpath(vec_dir, repo)}  ·  collection '{COLLECTION}' 共 {col.count()} 块")
-    print(f"  检索：py -3.12 {os.path.join('.claude','skills','team-collab','scripts','query_memory.py')} \"<问题>\" --person {args.person}")
+    _q_hint = "py -3.12" if os.name == "nt" else "python3"   # 跨平台：mac/Linux 无 Windows 的 py 启动器，照抄会 command not found
+    print(f"  检索：{_q_hint} {os.path.join('.claude','skills','team-collab','scripts','query_memory.py')} \"<问题>\" --person {args.person}")
 
 if __name__ == "__main__":
     main()

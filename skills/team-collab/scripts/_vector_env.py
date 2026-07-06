@@ -91,9 +91,23 @@ def ensure_vector_stack(script_path):
         return
     except ImportError:
         pass
+    # 一段可直接粘贴的「建独立 venv 装依赖」命令（按平台）——两处失败提示复用，别让用户自己想
+    # （见 team-collab/references/install-and-build-issues.md#1.4）。
+    if os.name == "nt":
+        _venv_tip = ("  ③ 建独立 venv（推荐）：\n"
+                     "     py -3.12 -m venv %USERPROFILE%\\.venvs\\tc-vector\n"
+                     "     %USERPROFILE%\\.venvs\\tc-vector\\Scripts\\pip install chromadb sentence-transformers\n"
+                     "     set TC_VECTOR_PYTHON=%USERPROFILE%\\.venvs\\tc-vector\\Scripts\\python.exe")
+    else:
+        _venv_tip = ("  ③ 建独立 venv（推荐，跨项目复用、不污染仓库）：\n"
+                     "     python3 -m venv ~/.venvs/tc-vector\n"
+                     "     ~/.venvs/tc-vector/bin/pip install chromadb sentence-transformers\n"
+                     "     export TC_VECTOR_PYTHON=~/.venvs/tc-vector/bin/python")
     if os.environ.get("_TC_MEM_REEXEC"):
-        sys.exit("✗ 当前解释器缺 chromadb / sentence-transformers。\n"
-                 "  请 pip install chromadb sentence-transformers，或设 TC_VECTOR_PYTHON 指向已装好它们的解释器。")
+        sys.exit("✗ 当前解释器缺 chromadb / sentence-transformers。任选其一：\n"
+                 "  ① 当前解释器 `pip install chromadb sentence-transformers`；\n"
+                 "  ② 设 TC_VECTOR_PYTHON 指向已装好它们的解释器；\n"
+                 + _venv_tip)
 
     candidates = []
     if os.environ.get("TC_VECTOR_PYTHON"):
@@ -111,4 +125,5 @@ def ensure_vector_stack(script_path):
             sys.exit(subprocess.run(cmd + [script_path, *sys.argv[1:]], env=env).returncode)
     sys.exit("✗ 找不到装了 chromadb/sentence-transformers 的 Python。任选其一：\n"
              "  ① 当前解释器 `pip install chromadb sentence-transformers`；\n"
-             "  ② 设环境变量 TC_VECTOR_PYTHON 指向一个已装好它们的解释器（如某 conda 环境的 python）。")
+             "  ② 设环境变量 TC_VECTOR_PYTHON 指向一个已装好它们的解释器（如某 conda 环境的 python）；\n"
+             + _venv_tip)

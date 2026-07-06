@@ -2,7 +2,7 @@
 
 > 来源：2026-07-07，一次真实落地过程。任务链：`git clone` tashan-wechat-skills → 把 `team-collab`/`recall-memory` **全局**注册进 `~/.claude/skills/` → 在 `/Users/boyuan/softmatter`（**不是 git 仓库**）建对话树 + 语义记忆库（`--person Boyuan`）。
 > 环境：macOS（Darwin 25.3）· 系统 `python3` = `/usr/bin/python3` = **Python 3.9.6**（无 `python`、无 `py`）· 无 conda。
-> 定位：性质同 [`retrieval-issues-and-divergent-protocol.md`](./retrieval-issues-and-divergent-protocol.md)（recall-memory 的问题实录），但覆盖**安装 / 建树 / 建库首次落地**这一段。每条都附**原始命令 + 输出**为证；**修复状态一律「待修」**——留给读到本文的维护者动手。
+> 定位：性质同 [`retrieval-issues-and-divergent-protocol.md`](./retrieval-issues-and-divergent-protocol.md)（recall-memory 的问题实录），但覆盖**安装 / 建树 / 建库首次落地**这一段。每条都附**原始命令 + 输出**为证。**修复状态见下「修复状态」节**：#1(护栏) / #2 / #4 已在 macOS 上就地修并验证（本次落地时顺手修的、且都能在 mac 验证）；#3 / #5 / #1 的完整重设计留给读到本文的维护者。
 > 复现说明：除特别标注外，问题与操作系统无关（REPO 推导、脱敏计数、CLI 契约都是平台无关逻辑）。
 
 ## 摘要表
@@ -16,6 +16,17 @@
 | 5 | P3 | `--person` 必填、无默认、对首次/单人建树无引导 | `build_session_tree.py:143` | 文档给「个人用就填你的 handle」示例；或缺省时交互提示而非直接退出 |
 
 另有「部署/环境注意」若干（非脚本缺陷）见文末第二节。
+
+---
+
+## 修复状态（2026-07-07 · 已在 macOS 上修 3 项并验证）
+
+> 落地者在 macOS 上把**能在 mac 验证、且不改成功路径**的 3 项就地修了并验证；其余留维护者。改动 4 个文件，每项附实测。
+
+- **#2 ✅ 已修+验证** — `build_memory_index.py` 检索提示改按平台（`"py -3.12" if os.name=="nt" else "python3"`）。实测：重建索引后打印 `检索：python3 …`（不再 `py -3.12`）。
+- **#4 ✅ 已修+验证** — (a) `recall-memory/SKILL.md` 增 macOS/Linux venv 说明 + 「首次搭建」③ 选项；(b) `_vector_env.py` 两处「无依赖」失败提示加入可直接粘贴的 ③ venv 命令（按平台）。实测：系统 `python3`（无依赖、`TC_VECTOR_PYTHON` 未设）运行时打印含 ③ venv recipe 的新提示。
+- **#1 ⚠️ 部分已修（护栏）+验证** — `build_session_tree.py` 加护栏：解析出的 REPO 把 `~/.claude` 包在内（= 全局安装误判）时**拒绝并指路**，不再静默往 `~/团队协作记录` 写。实测：全局安装 `--list` → 拒绝（exit 1、未创建 `~/团队协作记录`）；项目级 `--list` → 照常列 182 会话（exit 0）。**回归**：冻结源（181 会话）下 edited-vs-original 双跑 `tree.json` **字节一致**（261==261），证明护栏对成功路径零影响。**未做**：完整 `--repo` 参数 / 缺省 cwd 上溯重设计（跨 `build_session_tree.py` + `verify_tree.py`、属设计变更）。
+- **#3 / #5 / #1 完整重设计 — 未动**：#3 触及共享 `redact`/`report` + `check_pii` gate + 字节回归、且「该报什么数」是设计判断；#5 交互式 prompt 本身是 footgun，只宜文档化；#1 重设计跨 build+verify。
 
 ---
 
@@ -144,4 +155,4 @@ build_session_tree.py:143    ap.add_argument("--person", required=True)
 
 ---
 
-*本文只报问题、不改代码。修复请按仓库 `CONTRIBUTING.md` 开分支 + conventional commit + PR。*
+*本文第一节报问题、第二节记环境注意；「修复状态」节记本次已在 macOS 就地修并验证的 3 项。其余修复请按仓库 `CONTRIBUTING.md` 开分支 + conventional commit + PR。*
