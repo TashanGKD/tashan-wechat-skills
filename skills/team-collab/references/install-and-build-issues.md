@@ -2,18 +2,18 @@
 
 > 来源：2026-07-07，一次真实落地过程。任务链：`git clone` tashan-wechat-skills → 把 `team-collab`/`recall-memory` **全局**注册进 `~/.claude/skills/` → 在 `/Users/boyuan/softmatter`（**不是 git 仓库**）建对话树 + 语义记忆库（`--person Boyuan`）。
 > 环境：macOS（Darwin 25.3）· 系统 `python3` = `/usr/bin/python3` = **Python 3.9.6**（无 `python`、无 `py`）· 无 conda。
-> 定位：性质同 [`retrieval-issues-and-divergent-protocol.md`](./retrieval-issues-and-divergent-protocol.md)（recall-memory 的问题实录），但覆盖**安装 / 建树 / 建库首次落地**这一段。每条都附**原始命令 + 输出**为证。**修复状态见下「修复状态」节**：#1–#5 均已在 macOS 上就地修并验证；仅剩两处**设计判断**留给维护者——#3 的 `long-id` 是否过度脱敏、#1 的「缺省是否改用 cwd 上溯替换安装路径反推」。
+> 定位：性质同 [`retrieval-issues-and-divergent-protocol.md`](./retrieval-issues-and-divergent-protocol.md)（recall-memory 的问题实录），但覆盖**安装 / 建树 / 建库首次落地**这一段。每条都附**原始命令 + 输出**为证；**源码引用一律用符号/函数名锚定**（如「`main()` 里的 `counts={}`」），不写行号——行号会随代码增删漂移（本文档就踩过：PR#4 合并后原有行号整体偏移 +1~+61）。**修复状态见下「修复状态」节**：#1–#5 均已在 macOS 上就地修并验证；仅剩两处**设计判断**留给维护者——#3 的 `long-id` 是否过度脱敏、#1 的「缺省是否改用 cwd 上溯替换安装路径反推」。
 > 复现说明：除特别标注外，问题与操作系统无关（REPO 推导、脱敏计数、CLI 契约都是平台无关逻辑）。
 
 ## 摘要表
 
 | # | 级别 | 问题 | 根因位置 | 一句话建议 |
 |---|---|---|---|---|
-| 1 | **P1** | 全局安装时 `build_session_tree.py` 把 REPO 误解析成用户 home，会往 `~/团队协作记录/` 写、marker 变 `boyuan` | `build_session_tree.py:24,29,32`（REPO 由**脚本安装路径**反推，无 `--repo`、无护栏） | 加 `--repo`；缺省用 **cwd 上溯**找项目根而非安装路径；REPO 落到 home/非项目时**拒绝并提示** |
+| 1 | **P1** | 全局安装时 `build_session_tree.py` 把 REPO 误解析成用户 home，会往 `~/团队协作记录/` 写、marker 变 `boyuan` | `build_session_tree.py` 文件头 `HERE`/`REPO`/`REPO_MARKER`（REPO 由**脚本安装路径**反推，无 `--repo`、无护栏） | 加 `--repo`；缺省用 **cwd 上溯**找项目根而非安装路径；REPO 落到 home/非项目时**拒绝并提示** |
 | 2 | P2 | 建库脚本打印的检索提示是 **Windows-only**（`py -3.12 …`），mac/Linux 复制即 `command not found` | `build_memory_index.py`（末尾提示行，见 E5） | 按平台给命令，或直接打印 `sys.executable` |
-| 3 | P2 | 每节点 `脱敏命中: N` 显示的是**「累计到此」的 running total**（对话10 头写 11277，文件里只有 21），因跨节点共享同一 `counts` | `build_session_tree.py:300` 一个 `counts` 传给每个节点的 `render()`；`render()` 用 `sum(counts)`（`make_transcript:99`） | `render()` 改用**本次增量** `sum(counts)-起始` 作每节点计数 |
+| 3 | P2 | 每节点 `脱敏命中: N` 显示的是**「累计到此」的 running total**（对话10 头写 11277，文件里只有 21），因跨节点共享同一 `counts` | `build_session_tree.py` 的 `main()` 建一个 `counts` 传给每个节点的 `render()`；`render()` 用 `sum(counts)`（`make_transcript_claudecode.py` 的 `render()`） | `render()` 改用**本次增量** `sum(counts)-起始` 作每节点计数 |
 | 4 | P3 | 首次在**无依赖机器**上建库需手动搭 venv：系统 `python3`(3.9.6) 无 `chromadb`，`python`/`py` 都不存在 | 依赖未随附；`ensure_vector_stack` 探测全失败时只报错不给 venv 步骤 | README/SKILL 增补 macOS/Linux 的 venv 建法；探测全失败时打印「建 venv」的具体命令 |
-| 5 | P3 | `--person` 必填、无默认、对首次/单人建树无引导 | `build_session_tree.py:143` | 文档给「个人用就填你的 handle」示例；或缺省时交互提示而非直接退出 |
+| 5 | P3 | `--person` 必填、无默认、对首次/单人建树无引导 | `build_session_tree.py` 的 `ap.add_argument("--person", …)` | 文档给「个人用就填你的 handle」示例；或缺省时交互提示而非直接退出 |
 
 另有「部署/环境注意」若干（非脚本缺陷）见文末第二节。
 
@@ -40,9 +40,10 @@
 **问题**：`build_session_tree.py` 的目标仓库**不是**由 cwd 或参数决定，而是由**脚本自身的安装路径**反推：
 
 ```
-build_session_tree.py:24  HERE = os.path.dirname(os.path.abspath(__file__))
-build_session_tree.py:29  REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
-build_session_tree.py:32  REPO_MARKER = os.path.basename(REPO)   # 自动取当前仓库目录名，不写死项目
+# build_session_tree.py 文件头（符号：HERE / REPO / REPO_MARKER）
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
+REPO_MARKER = os.path.basename(REPO)   # 自动取当前仓库目录名，不写死项目
 ```
 
 它假定安装在 `<repo>/.claude/skills/team-collab/scripts/`（四级 `..` 正好回到 `<repo>`）。**全局安装**时四级 `..` 从 `~/.claude/skills/team-collab/scripts` 回到的是**用户 home**。且**没有 `--repo` 参数**可覆盖（CLI 只有下列 flag）：
@@ -77,7 +78,7 @@ add_argument("--adapters")add_argument("--with-subagents")  add_argument("--if-s
 
 **问题**：提示写死 Windows 的 `py -3.12` 启动器，macOS/Linux 上没有 `py`，用户照抄即 `command not found`。
 
-原始证据（本次 mac 上的建库输出，`index.log:164`）：
+原始证据（本次 mac 上的建库输出——`build_memory_index.py` 末尾打印的检索提示行）：
 ```
 检索：py -3.12 .claude/skills/team-collab/scripts/query_memory.py "<问题>" --person Boyuan
 ```
@@ -88,9 +89,9 @@ add_argument("--adapters")add_argument("--with-subagents")  add_argument("--if-s
 
 **场景**：建树给每个 `段.md` 头部写「脱敏命中: N 处」，建库结束再打印总报告。用户会据此判断「本节点挡了多少 PII」。
 
-**问题（真因，已据源码确认）**：`build_session_tree.py:300` 建**一个** `counts={}`，遍历节点时把**同一个** `counts` 传给每个节点的 `render()`（`:331`）；而 `render()` 用 `sum(counts.values())` 当本节点头部计数（`make_transcript_claudecode.py:99`）。于是每个节点头部显示的是**渲染到该节点时的累计命中**、而非它自身——越靠后数字越大，最后一个≈全库总数。
+**问题（真因，已据源码确认）**：`build_session_tree.py` 的 `main()` 建**一个** `counts = {}`，遍历节点时把**同一个** `counts` 传给每个节点的 `mt.render(...)`；而 `make_transcript_claudecode.py` 的 `render()` 用 `sum(counts.values())` 当本节点头部计数。于是每个节点头部显示的是**渲染到该节点时的累计命中**、而非它自身——越靠后数字越大，最后一个≈全库总数。
 
-> ⚠️ **更正**：本文早先猜测是「render 前全文命中、render 后截断丢弃」，**经查源码不成立**——`render()` 把 `tool_use`/`tool_result` 连同脱敏一起 emit 进 `段.md`（`make_transcript:96,98`），并未丢弃。真因是**跨节点共享 `counts`**。
+> ⚠️ **更正**：本文早先猜测是「render 前全文命中、render 后截断丢弃」，**经查源码不成立**——`render()` 把 `tool_use`/`tool_result` 连同脱敏一起 emit 进 `段.md`（即 `render()` 里 emit `⟨工具调用⟩`/`⟨工具结果⟩` 的两行），并未丢弃。真因是**跨节点共享 `counts`**。
 
 原始证据（同一个节点：build 总数 / 该节点 header 声称 / 该节点 `段.md` 实际标记）：
 ```
@@ -136,7 +137,8 @@ ModuleNotFoundError: No module named 'chromadb'
 
 原始证据：
 ```
-build_session_tree.py:143    ap.add_argument("--person", required=True)
+# build_session_tree.py · main() 的 argparse（当时）
+ap.add_argument("--person", required=True)
 ```
 
 **建议**：文档明确「个人自用就填你自己的 handle（如账号名）」并给例；或缺省时**交互式提示**而非直接 `SystemExit`。
