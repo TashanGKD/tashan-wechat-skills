@@ -89,6 +89,8 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 .chip.contchip{background:#f2f3f5;border-color:#d6dae1;color:#6b7280;border-style:dashed}
 .rd{background:#eef0f3;color:#9aa0ac;border-radius:5px;padding:0 4px;font-size:10px;white-space:nowrap}
 .ndm{color:#aab0bc;font-size:8.5px}.ndm b2{color:#7b8393;font-weight:700}
+.tpill{background:#f0f2f5;color:#8b93a1;border-radius:5px;padding:0 5px;font-size:9.5px;white-space:nowrap}
+.emptx{color:#b0b6c0;font-style:italic}.box.empt{background:#fafbfc;border-style:dashed}
 .chip{position:absolute;padding:4px 10px;border-radius:11px;font-size:10.5px;background:#eef4ff;border:1px solid #cfe0ff;color:#3358c4;cursor:pointer;white-space:nowrap}
 .fold{position:absolute;width:15px;height:15px;border-radius:50%;background:#fff;border:1px solid var(--blue);color:var(--blue);font-size:11px;line-height:13px;text-align:center;cursor:pointer;z-index:6}
 .bar{position:absolute;right:14px;bottom:14px;display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
@@ -118,7 +120,7 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
   </div>
 </div>
 <script>
-let NBD={},NBA={},KIDS={},ROOTS=[],TREES={},CACHE={},NODE_COMPACT={};
+let NBD={},NBA={},KIDS={},ROOTS=[],TREES={},CACHE={},NODE_COMPACT={},NODE_FAILED={};
 let cur=null,collapsed=new Set(),expanded=new Set(),allExp=false,showTs=true,boxW=300,curAbort=null;
 let view={tx:40,ty:70,k:1},drag=null,dragMoved=false,rz=null,boxEls=[];
 const world=document.getElementById('world'),stage=document.getElementById('stage'),hint=document.getElementById('hint'),edges=document.getElementById('edges'),side=document.getElementById('side');
@@ -127,6 +129,7 @@ function prev20(t){return t.length>200?t.slice(0,200)+'…':t;}   // 不再硬�
 function fmtN(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':(''+n);}
 function fmtDur(t0,t1){if(!t0||!t1)return '';const a=new Date(t0.replace(' ','T')),b=new Date(t1.replace(' ','T'));if(isNaN(a)||isNaN(b)||b<a)return '';const m=Math.round((b-a)/6e4);if(m<60)return m+'分';const h=m/60;if(h<24)return (h>=10?Math.round(h):h.toFixed(1))+'时';return Math.round(h/24)+'天';}
 function fmtTx(s){return s.replace(/\[已脱敏[:：]([^\]]*)\]/g,'<span class="rd">🔒$1</span>');}   // 脱敏标记→淡色pill
+function fmtTools(s){return s.replace(/(?:⟦T:[^⟧]*⟧\s*)+/g,m=>{const ns=[...m.matchAll(/⟦T:([^⟧]*)⟧/g)].map(x=>x[1]),u=[...new Set(ns)];return '<span class="tpill">🔧 '+ns.length+' 步'+(u.length&&u.length<=3?'·'+u.join('·'):'')+'</span> ';});}  // 连续工具调用→一个折叠 pill
 function subCount(dir){let c=1;for(const k of (KIDS[dir]||[]))c+=subCount(k);return c;}
 function cnt(t){return t.s.length+t.b.reduce((a,c)=>a+cnt(c[1]),0);}
 function isExp(id){return allExp!==expanded.has(id);}
@@ -148,7 +151,10 @@ function parseTurns(md){
   return out;
 }
 function clean(t){
-  t=t.replace(/<details>[\s\S]*?<\/details>/g,' ').replace(/\[工具:[^\]]*\]/g,' ').replace(/⟨工具结果[\s\S]*?⟩/g,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+  t=t.replace(/⟨工具结果[\s\S]*?⟩/g,' ')                                       // 工具结果=噪声,删
+     .replace(/<details>[\s\S]*?⟨工具调用\s*·\s*([^⟩<]+)⟩[\s\S]*?<\/details>/g,' ⟦T:$1⟧ ')  // 工具调用→抽工具名占位(不再整段删)
+     .replace(/<details>[\s\S]*?<\/details>/g,' ').replace(/\[工具:([^\]]*)\]/g,' ⟦T:$1⟧ ')
+     .replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
   if(!t)return null;
   const h=t.slice(0,220);
   if(COMPACT.some(k=>h.includes(k)))return null;
@@ -166,7 +172,8 @@ function buildTree(dir){
   const spine=[],branches=[];let d=dir;
   while(d){
     const turns=CACHE[d]||[],tool=(NBD[d]||{}).source_tool||'Claude Code';
-    turns.forEach((x,i)=>{const o={r:x[0],t:x[1],ts:x[2],tool:tool};if(i===0)o.nd=d;spine.push(o);});   // 每 turn 带 source_tool；每节点首 turn 记 nd
+    if(turns.length===0)spine.push({r:'a',t:'',ts:'',tool:tool,nd:d,empty:true});   // 空节点留占位框→不消失、子树不被丢
+    else turns.forEach((x,i)=>{const o={r:x[0],t:x[1],ts:x[2],tool:tool};if(i===0)o.nd=d;spine.push(o);});   // 每 turn 带 source_tool；每节点首 turn 记 nd
     const last=spine.length-1;
     const ch=(KIDS[d]||[]).slice().sort(cmpChild);
     const ps=new Set((NBD[d]||{}).sessions||[]);                       // 主线优先"与父同 session 的续接"，其次最早(稳定序)
@@ -183,14 +190,17 @@ function render(){
   const T=TREES[cur];if(!T)return;
   [...world.querySelectorAll('.box,.chip,.fold,.ndcode')].forEach(e=>e.remove());
   edges.innerHTML='';boxEls=[];
+  const renderedNodes=new Set();   // 一致性 gate：渲染覆盖的节点集，末尾与 tree.json 子树对比
   const COLW=boxW+24;world.style.setProperty('--bw',boxW+'px');
   const colY={};   // 每列下一个空闲 y：主线一路连续往下，分支各占右侧一列、并排不挤主线
   const rb=document.createElement('div');rb.className='box root';rb.innerHTML='<span class="tx">'+esc(cur)+'</span>';rb.style.left='0px';rb.style.top='0px';world.appendChild(rb);
   const rh=rb.offsetHeight;boxEls.push({el:rb,col:0});colY[0]=rh+13;
   function box(turn,id,col,yy,bhead){
-    const ex=isExp(id);const el=document.createElement('div');el.className='box '+turn.r+(ex?' exp':'')+(bhead?' bhead':'');el.dataset.id=id;
+    if(turn.nd)renderedNodes.add(turn.nd);   // 一致性统计：记下渲染覆盖的节点
+    const ex=isExp(id);const el=document.createElement('div');el.className='box '+turn.r+(ex?' exp':'')+(bhead?' bhead':'')+(turn.empty?' empt':'');el.dataset.id=id;
     const badge=bhead?'<span class="bbadge'+(bhead.kind==='cont'?' cont':'')+'">'+(bhead.kind==='cont'?'⟳ ':'⑂ ')+esc(bhead.name)+(bhead.aiFirst?'·续':'')+(bhead.xtool?'·⌥'+esc(bhead.xtool):'')+'</span>':'';
-    el.innerHTML='<div class="rz"></div><div class="tx">'+badge+'<span class="rl">'+(turn.r==='u'?'我':'AI')+'</span>'+fmtTx(esc(ex?turn.t:prev20(turn.t)))+'</div>'+(showTs&&turn.ts?'<div class="ts">'+esc(turn.ts)+'</div>':'');
+    const body=turn.empty?'<span class="emptx">（'+(NODE_FAILED[turn.nd]?'加载失败·刷新重试':'无可显示内容·中断/压缩/仅工具轮')+'）</span>':fmtTools(fmtTx(esc(ex?turn.t:prev20(turn.t))));
+    el.innerHTML='<div class="rz"></div><div class="tx">'+badge+'<span class="rl">'+(turn.r==='u'?'我':'AI')+'</span>'+body+'</div>'+(showTs&&turn.ts?'<div class="ts">'+esc(turn.ts)+'</div>':'');
     el.style.left=(col*COLW)+'px';el.style.top=yy+'px';world.appendChild(el);boxEls.push({el:el,col:col});
     if(turn.nd){const n=NBD[turn.nd]||{};const ss=n.sessions||[];const sid=ss[0]||'';const tool=n.source_tool||'Claude Code';
       const meta=[];if(n.n_records)meta.push(fmtN(n.n_records)+'轮');const dr=fmtDur(n.t0,n.t1);if(dr)meta.push(dr);if(ss.length>1)meta.push('+'+(ss.length-1)+'会话');
@@ -221,6 +231,7 @@ function render(){
       const bm={name:bname,aiFirst:!!(b0&&b0.r==='a'),kind:NODE_COMPACT[bnd]?'cont':'fork',xtool:btool!==spineTool?btool:null};   // cont=段.md首轮是压缩摘要(自动续接)；否则=fork
       const gl=(bm.kind==='cont'?'⟳ ':'⑂ ')+bname+(bm.xtool?' ·⌥'+bm.xtool:'');
       if(collapsed.has(bp)){
+        if(bnd)subtreeDirs(bnd).forEach(x=>renderedNodes.add(x));   // 折叠进 chip 的子树节点算"已覆盖"(非丢弃)
         const cy=Math.max(fp.y,colY[col+1]||0);const chip=document.createElement('div');chip.className='chip'+(bm.kind==='cont'?' contchip':'');chip.dataset.exp=bp;chip.textContent=gl+' · '+cnt(br[1])+'条';chip.style.left=((col+1)*COLW)+'px';chip.style.top=cy+'px';world.appendChild(chip);
         const chh=chip.offsetHeight;colY[col+1]=cy+chh+9;bconn(col*COLW,fp.yc,(col+1)*COLW,cy+chh/2,bm.kind==='cont');
       }else{
@@ -235,6 +246,8 @@ function render(){
   world.style.width=(Math.max(0,...boxEls.map(b=>b.col*COLW))+boxW+80)+'px';
   world.style.height=(Math.max(0,...Object.values(colY))+80)+'px';
   applyT();hint.textContent=cur+' · '+T.s.length+'+ 轮';
+  const expect=subtreeDirs((NBA[cur]||{}).dir||'').length,got=renderedNodes.size;   // 一致性 gate：渲染节点集(含折叠chip子树)应==tree.json 子树
+  if(got<expect)console.warn('[思维画布] 一致性告警：对话「'+cur+'」应覆盖 '+expect+' 节点，实际 '+got+'（缺 '+(expect-got)+'），可能有节点被静默丢弃');
 }
 world.addEventListener('click',e=>{
   const nc=e.target.closest('.ndcode');
@@ -327,7 +340,7 @@ async function ensureTree(alias,sig){
   const rootDir=NBA[alias].dir,dirs=subtreeDirs(rootDir);
   await Promise.all(dirs.map(async d=>{
     if(CACHE[d]!==undefined)return;
-    try{const r=await fetch(encodeURI(d+'/段.md'),sig?{signal:sig}:undefined);if(r.ok){const rw=parseTurns(await r.text());NODE_COMPACT[d]=rw.length>0&&COMPACT.some(k=>(rw[0][2]||'').slice(0,240).includes(k));CACHE[d]=coalesce(rw);}else CACHE[d]=[];}catch(e){if(!sig||e.name!=='AbortError')CACHE[d]=[];}
+    try{const r=await fetch(encodeURI(d+'/段.md'),sig?{signal:sig}:undefined);if(r.ok){const rw=parseTurns(await r.text());NODE_COMPACT[d]=rw.length>0&&COMPACT.some(k=>(rw[0][2]||'').slice(0,240).includes(k));CACHE[d]=coalesce(rw);}else{CACHE[d]=[];NODE_FAILED[d]=true;}}catch(e){if(!sig||e.name!=='AbortError'){CACHE[d]=[];NODE_FAILED[d]=true;}}
   }));
   if(sig&&sig.aborted)return;
   TREES[alias]=buildTree(rootDir);

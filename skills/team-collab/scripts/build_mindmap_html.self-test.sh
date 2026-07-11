@@ -48,6 +48,11 @@ grep -q 'class="src ' "$H" && grep -q '·⌥' "$H" && pass "P1 跨源来源标 +
 grep -q 'id="q"' "$H" && grep -q "classList.toggle('hide'" "$H" && grep -q "classList.toggle('hit'" "$H" && pass "C 搜索(左栏过滤+内容高亮)" || bad "搜索缺失"
 grep -q 'history.replaceState' "$H" && grep -q 'hashchange' "$H" && pass "C 深链 location.hash" || bad "深链缺失"
 grep -q 'function seedCollapse' "$H" && pass "C 深/宽分支默认折叠" || bad "默认折叠缺失"
+# P1 内容忠实批(B)
+grep -q 'function fmtTools' "$H" && grep -q 'class="tpill"' "$H" && grep -q '⟦T:' "$H" && pass "B 工具调用→折叠pill(不再整段删)" || bad "工具pill缺失"
+grep -q 'empty:true' "$H" && grep -q 'class="emptx"' "$H" && pass "B 空节点占位框(不消失)" || bad "空节点占位缺失"
+grep -q 'NODE_FAILED' "$H" && pass "B 拉取失败标记" || bad "拉取失败标记缺失"
+grep -q 'renderedNodes' "$H" && grep -q '一致性告警' "$H" && pass "B 渲染 vs tree.json 一致性 gate" || bad "一致性 gate 缺失"
 
 echo "----"; [ $fail -eq 0 ] && echo "✓ 全过" || echo "✗ 有失败项"
 exit $fail
