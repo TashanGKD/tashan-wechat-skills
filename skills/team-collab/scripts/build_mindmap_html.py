@@ -81,6 +81,11 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 .box.a{background:#f4f5f7;border-color:#e3e6ea}.box.a .rl{color:#7a828e}
 .box.root{width:154px!important;background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700;font-size:13px;text-align:center}
 .box.root .tx{white-space:nowrap}
+.box.bhead{border-left:3px solid var(--blue)!important}
+.bbadge{display:inline-block;background:var(--blue);color:#fff;font-size:9px;font-weight:700;border-radius:5px;padding:0 5px;margin-right:4px;vertical-align:1px}
+.bbadge.cont{background:#7a828e}
+.rd{background:#eef0f3;color:#9aa0ac;border-radius:5px;padding:0 4px;font-size:10px;white-space:nowrap}
+.ndm{color:#aab0bc;font-size:8.5px}.ndm b2{color:#7b8393;font-weight:700}
 .chip{position:absolute;padding:4px 10px;border-radius:11px;font-size:10.5px;background:#eef4ff;border:1px solid #cfe0ff;color:#3358c4;cursor:pointer;white-space:nowrap}
 .fold{position:absolute;width:15px;height:15px;border-radius:50%;background:#fff;border:1px solid var(--blue);color:var(--blue);font-size:11px;line-height:13px;text-align:center;cursor:pointer;z-index:6}
 .bar{position:absolute;right:14px;bottom:14px;display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
@@ -107,15 +112,22 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 </div>
 <script>
 let NBD={},NBA={},KIDS={},ROOTS=[],TREES={},CACHE={};
-let cur=null,collapsed=new Set(),expanded=new Set(),allExp=false,showTs=true,boxW=300;
+let cur=null,collapsed=new Set(),expanded=new Set(),allExp=false,showTs=true,boxW=300,curAbort=null;
 let view={tx:40,ty:70,k:1},drag=null,dragMoved=false,rz=null,boxEls=[];
 const world=document.getElementById('world'),stage=document.getElementById('stage'),hint=document.getElementById('hint'),edges=document.getElementById('edges'),side=document.getElementById('side');
 function esc(s){return (s||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
-function prev20(t){return t.length>20?t.slice(0,20)+'…':t;}
+function prev20(t){return t.length>200?t.slice(0,200)+'…':t;}   // 不再硬砍20字：CSS按框宽省略，拖宽即多显
+function fmtN(n){return n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':(''+n);}
+function fmtDur(t0,t1){if(!t0||!t1)return '';const a=new Date(t0.replace(' ','T')),b=new Date(t1.replace(' ','T'));if(isNaN(a)||isNaN(b)||b<a)return '';const m=Math.round((b-a)/6e4);if(m<60)return m+'分';const h=m/60;if(h<24)return (h>=10?Math.round(h):h.toFixed(1))+'时';return Math.round(h/24)+'天';}
+function fmtTx(s){return s.replace(/\[已脱敏[:：]([^\]]*)\]/g,'<span class="rd">🔒$1</span>');}   // 脱敏标记→淡色pill
+function subCount(dir){let c=1;for(const k of (KIDS[dir]||[]))c+=subCount(k);return c;}
 function cnt(t){return t.s.length+t.b.reduce((a,c)=>a+cnt(c[1]),0);}
 function isExp(id){return allExp!==expanded.has(id);}
 function applyT(){world.style.transform=`translate(${view.tx}px,${view.ty}px) scale(${view.k})`;}
-function fit(){view.tx=40;view.ty=70;view.k=1;applyT();}
+function fit(){   // 真·zoom-to-fit：读 render() 已算好的 world 尺寸，等比缩放并居中
+  const ww=world.offsetWidth||1,wh=world.offsetHeight||1,vw=stage.clientWidth||1,vh=stage.clientHeight||1;
+  const k=Math.min(2.5,Math.max(.15,Math.min((vw-48)/ww,(vh-48)/wh)));
+  view.k=k;view.tx=Math.max(12,(vw-ww*k)/2);view.ty=20;applyT();}
 function byNum(a,b){const na=parseInt((a.alias.match(/\d+/)||[9999])[0]),nb=parseInt((b.alias.match(/\d+/)||[9999])[0]);return na-nb;}
 // ── 从段.md现抽（对应 Python 的 raw_turns/clean/coalesce/build）──
 const COMPACT=['This session is being continued','ran out of context','Caveat: The messages below'];
@@ -164,23 +176,25 @@ function render(){
   const colY={};   // 每列下一个空闲 y：主线一路连续往下，分支各占右侧一列、并排不挤主线
   const rb=document.createElement('div');rb.className='box root';rb.innerHTML='<span class="tx">'+esc(cur)+'</span>';rb.style.left='0px';rb.style.top='0px';world.appendChild(rb);
   const rh=rb.offsetHeight;boxEls.push({el:rb,col:0});colY[0]=rh+13;
-  function box(turn,id,col,yy){
-    const ex=isExp(id);const el=document.createElement('div');el.className='box '+turn.r+(ex?' exp':'');el.dataset.id=id;
-    el.innerHTML='<div class="rz"></div><div class="tx"><span class="rl">'+(turn.r==='u'?'我':'AI')+'</span>'+esc(ex?turn.t:prev20(turn.t))+'</div>'+(showTs&&turn.ts?'<div class="ts">'+esc(turn.ts)+'</div>':'');
+  function box(turn,id,col,yy,bhead){
+    const ex=isExp(id);const el=document.createElement('div');el.className='box '+turn.r+(ex?' exp':'')+(bhead?' bhead':'');el.dataset.id=id;
+    const badge=bhead?'<span class="bbadge'+(bhead.cont?' cont':'')+'">⑂ '+esc(bhead.name)+(bhead.cont?'·续':'')+'</span>':'';
+    el.innerHTML='<div class="rz"></div><div class="tx">'+badge+'<span class="rl">'+(turn.r==='u'?'我':'AI')+'</span>'+fmtTx(esc(ex?turn.t:prev20(turn.t)))+'</div>'+(showTs&&turn.ts?'<div class="ts">'+esc(turn.ts)+'</div>':'');
     el.style.left=(col*COLW)+'px';el.style.top=yy+'px';world.appendChild(el);boxEls.push({el:el,col:col});
-    if(turn.nd){const n=NBD[turn.nd]||{};const sid=((n.sessions||[])[0]||'');
+    if(turn.nd){const n=NBD[turn.nd]||{};const ss=n.sessions||[];const sid=ss[0]||'';
+      const meta=[];if(n.n_records)meta.push(fmtN(n.n_records)+'轮');const dr=fmtDur(n.t0,n.t1);if(dr)meta.push(dr);if(ss.length>1)meta.push('+'+(ss.length-1)+'会话');
       const lab=document.createElement('div');lab.className='ndcode';lab.dataset.sid=sid;lab.title='点击复制会话编号 session-id（把它报给智能体即可"生成续接包"）';
-      lab.innerHTML='<b>'+esc((n.alias||'').split('/').pop())+'</b> '+esc(sid)+' <span class="cp">⧉复制</span>';
+      lab.innerHTML='<b>'+esc((n.alias||'').split('-').pop())+'</b> '+esc(sid)+' <span class="cp">⧉复制</span>'+(meta.length?' <span class="ndm">'+esc(meta.join(' · '))+'</span>':'');
       lab.style.left=(col*COLW)+'px';lab.style.top=(yy-13)+'px';world.appendChild(lab);}
     return el.offsetHeight;
   }
   function vline(col,y1,y2){edges.insertAdjacentHTML('beforeend',`<path d="M${col*COLW+9},${y1} L${col*COLW+9},${y2}" stroke="#c9d3e6" stroke-width="1.5" fill="none"/>`);}
   function bconn(fx,fy,tx,ty){const mx=fx+9;edges.insertAdjacentHTML('beforeend',`<path d="M${mx},${fy} L${mx},${ty} L${tx},${ty}" stroke="#4C7EF3" stroke-width="2.6" fill="none"/><circle cx="${mx}" cy="${fy}" r="3.8" fill="#4C7EF3"/>`);}
   // 主线先连续铺完（col 只随本段指令推进 y，不因分支而空等），再把分支放到右侧列（各列自己的 colY 防重叠）
-  function walk(t,col,startY,forkX,forkYc,path){
+  function walk(t,col,startY,forkX,forkYc,path,bmeta){
     let y=Math.max(startY,colY[col]||0);const pos=[];let firstYc=null,prevBottom=null;
     t.s.forEach((turn,i)=>{
-      const id=path+'/'+i;const h=box(turn,id,col,y);const yc=y+h/2;pos[i]={y:y,yc:yc,bottom:y+h};
+      const id=path+'/'+i;const h=box(turn,id,col,y,(i===0?bmeta:null));const yc=y+h/2;pos[i]={y:y,yc:yc,bottom:y+h};
       if(prevBottom!==null)vline(col,prevBottom,y);
       if(firstYc===null)firstYc=yc;prevBottom=y+h;y=y+h+9;
     });
@@ -188,12 +202,14 @@ function render(){
     if(forkYc!==null&&firstYc!==null)bconn(forkX,forkYc,col*COLW,firstYc);
     t.b.forEach((br,bi)=>{
       const ai=Math.min(br[0],pos.length-1);const fp=pos[ai];if(!fp)return;const bp=path+'.b'+bi;
+      const b0=br[1].s&&br[1].s[0],bnd=b0&&b0.nd;                          // 分支首块：取分支名 + 是否"续接"（首轮为AI）
+      const bname=bnd?((NBD[bnd].alias||'').split('-').pop()):('分支'+(bi+1)),bm={name:bname,cont:!!(b0&&b0.r==='a')};
       if(collapsed.has(bp)){
-        const cy=Math.max(fp.y,colY[col+1]||0);const chip=document.createElement('div');chip.className='chip';chip.dataset.exp=bp;chip.textContent='▸ '+cnt(br[1])+' 条';chip.style.left=((col+1)*COLW)+'px';chip.style.top=cy+'px';world.appendChild(chip);
+        const cy=Math.max(fp.y,colY[col+1]||0);const chip=document.createElement('div');chip.className='chip';chip.dataset.exp=bp;chip.textContent='⑂ '+bname+' · '+cnt(br[1])+'条';chip.style.left=((col+1)*COLW)+'px';chip.style.top=cy+'px';world.appendChild(chip);
         const chh=chip.offsetHeight;colY[col+1]=cy+chh+9;bconn(col*COLW,fp.yc,(col+1)*COLW,cy+chh/2);
       }else{
         const fold=document.createElement('div');fold.className='fold';fold.dataset.fold=bp;fold.textContent='−';fold.style.left=(col*COLW+16)+'px';fold.style.top=(fp.yc-7)+'px';world.appendChild(fold);
-        walk(br[1],col+1,fp.y,col*COLW,fp.yc,bp);
+        walk(br[1],col+1,fp.y,col*COLW,fp.yc,bp,bm);
       }
     });
     return firstYc;
@@ -206,23 +222,29 @@ function render(){
 }
 world.addEventListener('click',e=>{
   const nc=e.target.closest('.ndcode');
-  if(nc){e.stopPropagation();const sid=nc.dataset.sid;try{navigator.clipboard&&navigator.clipboard.writeText(sid);}catch(_){}const cp=nc.querySelector('.cp');if(cp){cp.textContent='✓已复制';setTimeout(()=>{cp.textContent='⧉复制';},1200);}return;}
+  if(nc){e.stopPropagation();const sid=nc.dataset.sid;const cp=nc.querySelector('.cp');
+    if(!sid){if(cp){cp.textContent='无 sid';setTimeout(()=>{cp.textContent='⧉复制';},1200);}return;}
+    const done=ok=>{if(cp){cp.textContent=ok?'✓已复制':'✗ 手动选中';setTimeout(()=>{cp.textContent='⧉复制';},ok?1200:1800);}};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(sid).then(()=>done(1),()=>done(0));}else{done(0);}   // 只有真成功才显✓
+    return;}
   const f=e.target.closest('.fold,.chip');
   if(f){const p=f.dataset.fold||f.dataset.exp;collapsed.has(p)?collapsed.delete(p):collapsed.add(p);render();return;}
   if(e.target.classList.contains('rz'))return;
+  if(window.getSelection&&String(window.getSelection()).length)return;   // 正在选中文字→不切换展开，放行复制
   const b=e.target.closest('.box:not(.root)');
   if(b&&!dragMoved){const id=b.dataset.id;expanded.has(id)?expanded.delete(id):expanded.add(id);render();}
 });
 world.addEventListener('mousedown',e=>{if(e.target.classList.contains('rz')){e.stopPropagation();rz={x:e.clientX,w:boxW};edges.style.opacity=0;}});
-stage.addEventListener('mousedown',e=>{if(rz)return;drag={x:e.clientX,y:e.clientY,tx:view.tx,ty:view.ty};dragMoved=false;stage.classList.add('drag');});
+stage.addEventListener('mousedown',e=>{if(rz)return;if(e.target.closest('.box.exp'))return;drag={x:e.clientX,y:e.clientY,tx:view.tx,ty:view.ty};dragMoved=false;stage.classList.add('drag');});   // 展开框内不启动平移→放行文本选择
 window.addEventListener('mousemove',e=>{
   if(rz){boxW=Math.max(150,Math.min(820,rz.w+(e.clientX-rz.x)/view.k));const CW=boxW+24;world.style.setProperty('--bw',boxW+'px');boxEls.forEach(b=>b.el.style.left=(b.col*CW)+'px');return;}
   if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>4)dragMoved=true;view.tx=drag.tx+dx;view.ty=drag.ty+dy;applyT();
 });
 window.addEventListener('mouseup',()=>{if(rz){rz=null;edges.style.opacity=1;render();}drag=null;stage.classList.remove('drag');setTimeout(()=>dragMoved=false,0);});
 stage.addEventListener('wheel',e=>{if(e.target.closest('.box.exp')){return;}e.preventDefault();const r=stage.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;const f=e.deltaY<0?1.12:1/1.12;const k2=Math.min(2.5,Math.max(.15,view.k*f));view.tx=mx-(mx-view.tx)*(k2/view.k);view.ty=my-(my-view.ty)*(k2/view.k);view.k=k2;applyT();},{passive:false});
-document.getElementById('zi').onclick=()=>{view.k=Math.min(2.5,view.k*1.2);applyT();};
-document.getElementById('zo').onclick=()=>{view.k=Math.max(.15,view.k/1.2);applyT();};
+function zoomBy(f){const cx=stage.clientWidth/2,cy=stage.clientHeight/2,k2=Math.min(2.5,Math.max(.15,view.k*f));view.tx=cx-(cx-view.tx)*(k2/view.k);view.ty=cy-(cy-view.ty)*(k2/view.k);view.k=k2;applyT();}
+document.getElementById('zi').onclick=()=>zoomBy(1.2);
+document.getElementById('zo').onclick=()=>zoomBy(1/1.2);
 document.getElementById('zf').onclick=fit;
 document.getElementById('eall').onclick=function(){allExp=!allExp;expanded.clear();this.textContent=allExp?'▤ 全部收起':'▤ 全部展开';render();};
 document.getElementById('tsT').onclick=function(){showTs=!showTs;this.classList.toggle('off',!showTs);render();};
@@ -250,7 +272,7 @@ function renderJourney(alias){
   let h='<div class="jhead">📖 研究历程 · '+esc(alias)+'</div>';
   function walk(dir,depth){
     const n=NBD[dir];if(!n)return;
-    const seg=(n.alias||'').split('/').pop();
+    const seg=(n.alias||'').split('-').pop();
     const sm=esc((n['摘要']||n.auto_summary||'').replace(/\s+/g,' ').trim());
     h+='<div class="jcard" data-nd="'+esc(dir)+'" style="margin-left:'+(depth*15)+'px"><div class="jt">'+esc(seg)+(depth>0?'<span class="ar">↳ 分支</span>':'')+'</div><div class="js">'+(sm||'（无摘要）')+'</div><div class="jmem"></div></div>';
     (KIDS[dir]||[]).slice().sort((a,b)=>((NBD[a].t0||'')<(NBD[b].t0||'')?-1:1)).forEach(c=>walk(c,depth+1));
@@ -275,27 +297,32 @@ function buildList(){
   let h='';
   for(const tool of Object.keys(groups).sort((a,b)=>((order[a]??9)-(order[b]??9)))){
     h+=`<div class="grp">${lab[tool]||tool} <span class="cnt">${groups[tool].length}</span></div>`;
-    for(const n of groups[tool].sort(byNum))
-      h+=`<div class="it" data-a="${esc(n.alias)}"><b>${esc(n.alias)}</b> <span class="dt">${(n.t0||'').slice(0,10)}</span><div class="sm">${esc((n['摘要']||'').slice(0,44))}</div></div>`;
+    for(const n of groups[tool].sort(byNum)){
+      const nn=subCount(n.dir),dr=fmtDur(n.t0,n.t1),sm=(n['摘要']||'').replace(/\s+/g,' ').trim();
+      const meta=[(n.t0||'').slice(0,10),nn+'节点',dr].filter(Boolean).join(' · ');
+      h+=`<div class="it" data-a="${esc(n.alias)}"><b>${esc(n.alias)}</b> <span class="dt">${esc(meta)}</span><div class="sm" title="${esc(sm)}">${esc(sm.slice(0,44))}</div></div>`;
+    }
   }
   side.innerHTML=h;
   side.querySelectorAll('.it').forEach(e=>e.onclick=()=>show(e.dataset.a));
 }
-async function ensureTree(alias){
+async function ensureTree(alias,sig){
   if(TREES[alias])return;
   const rootDir=NBA[alias].dir,dirs=subtreeDirs(rootDir);
   await Promise.all(dirs.map(async d=>{
     if(CACHE[d]!==undefined)return;
-    try{const r=await fetch(encodeURI(d+'/段.md'));CACHE[d]=r.ok?coalesce(parseTurns(await r.text())):[];}catch(e){CACHE[d]=[];}
+    try{const r=await fetch(encodeURI(d+'/段.md'),sig?{signal:sig}:undefined);CACHE[d]=r.ok?coalesce(parseTurns(await r.text())):[];}catch(e){if(!sig||e.name!=='AbortError')CACHE[d]=[];}
   }));
+  if(sig&&sig.aborted)return;
   TREES[alias]=buildTree(rootDir);
 }
 async function show(a){
+  if(curAbort)curAbort.abort();curAbort=new AbortController();const sig=curAbort.signal;   // 切换对话→取消上一条在途大文件请求
   cur=a;expanded.clear();collapsed=new Set();allExp=false;document.getElementById('eall').textContent='▤ 全部展开';
   hint.textContent='加载 '+a+' 的段.md…';
   side.querySelectorAll('.it').forEach(e=>e.classList.toggle('on',e.dataset.a===a));
   renderJourney(a);          // 研究历程栏（用 tree.json 结构即可，卡片点开才现读 .md）
-  await ensureTree(a);fit();render();
+  await ensureTree(a,sig);if(sig.aborted)return;render();fit();   // 先 render 定 world 尺寸，再 fit 居中
 }
 async function boot(){
   try{
@@ -303,10 +330,11 @@ async function boot(){
     for(const n of tj['节点']){NBD[n.dir]=n;NBA[n.alias]=n;if(n.parent_dir)(KIDS[n.parent_dir]=KIDS[n.parent_dir]||[]).push(n.dir);}
     ROOTS=tj['节点'].filter(n=>!n.parent_dir);
     document.getElementById('cnt').textContent=ROOTS.length+' 条';
+    if(!ROOTS.length){hint.textContent='该对话树暂无对话（tree.json 里没有根节点）。';return;}   // 空树≠读取失败
     buildList();
     const cc=ROOTS.filter(n=>(n.source_tool||'Claude Code')==='Claude Code').sort(byNum);
     show((cc[0]||ROOTS[0]).alias);
-  }catch(e){hint.textContent='读 tree.json 失败：'+e+'（是否用 serve.py 起了服务？）';}
+  }catch(e){hint.textContent='读 tree.json 失败：'+e+'（是否用 serve.py 起了服务？file:// 直接打开会失败）';}
 }
 boot();
 </script></body></html>"""
