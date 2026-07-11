@@ -202,7 +202,7 @@ function render(){
   edges.innerHTML='';boxEls=[];
   const renderedNodes=new Set();   // 一致性 gate：渲染覆盖的节点集，末尾与 tree.json 子树对比
   const COLW=boxW+24;world.style.setProperty('--bw',boxW+'px');
-  const colY={};   // 每列下一个空闲 y：主线一路连续往下，分支各占右侧一列、并排不挤主线
+  const colY={};let laneMax=0;   // colY=每列下一个空闲y;laneMax=车道分配器:每条分支独占一列(不再共列堆叠)
   const rb=document.createElement('div');rb.className='box root';rb.innerHTML='<span class="tx">'+esc(cur)+'</span>';rb.style.left='0px';rb.style.top='0px';world.appendChild(rb);
   const rh=rb.offsetHeight;boxEls.push({el:rb,col:0});colY[0]=rh+13;
   function box(turn,id,col,yy,bhead){
@@ -241,20 +241,21 @@ function render(){
       const btool=(b0&&b0.tool)||'Claude Code';
       const bm={name:bname,aiFirst:!!(b0&&b0.r==='a'),kind:NODE_COMPACT[bnd]?'cont':'fork',xtool:btool!==spineTool?btool:null};   // cont=段.md首轮是压缩摘要(自动续接)；否则=fork
       const gl=(bm.kind==='cont'?'⟳ ':'⑂ ')+bname+(bm.xtool?' ·⌥'+bm.xtool:'');
+      const bcol=++laneMax;   // 每条分支独占一条车道(列),从分叉点岔到自己的列,绝不共列堆叠
       if(collapsed.has(bp)){
         if(bnd)subtreeDirs(bnd).forEach(x=>renderedNodes.add(x));   // 折叠进 chip 的子树节点算"已覆盖"(非丢弃)
-        const cy=Math.max(fp.y,colY[col+1]||0);const chip=document.createElement('div');chip.className='chip'+(bm.kind==='cont'?' contchip':'');chip.dataset.exp=bp;chip.textContent=gl+' · '+cnt(br[1])+'条';chip.style.left=((col+1)*COLW)+'px';chip.style.top=cy+'px';world.appendChild(chip);
-        const chh=chip.offsetHeight;colY[col+1]=cy+chh+9;bconn(col*COLW,fp.yc,(col+1)*COLW,cy+chh/2,bm.kind==='cont');
+        const cy=fp.y;const chip=document.createElement('div');chip.className='chip'+(bm.kind==='cont'?' contchip':'');chip.dataset.exp=bp;chip.textContent=gl+' · '+cnt(br[1])+'条';chip.style.left=(bcol*COLW)+'px';chip.style.top=cy+'px';world.appendChild(chip);
+        const chh=chip.offsetHeight;colY[bcol]=cy+chh+9;bconn(col*COLW,fp.yc,bcol*COLW,cy+chh/2,bm.kind==='cont');
       }else{
-        const fold=document.createElement('div');fold.className='fold';fold.dataset.fold=bp;fold.textContent='−';fold.style.left=(col*COLW+16)+'px';fold.style.top=(fp.yc-7)+'px';world.appendChild(fold);
-        walk(br[1],col+1,fp.y,col*COLW,fp.yc,bp,bm);
+        const bfy=walk(br[1],bcol,fp.y,col*COLW,fp.yc,bp,bm);   // 分支画进自己的列 bcol
+        const fold=document.createElement('div');fold.className='fold';fold.dataset.fold=bp;fold.textContent='−';fold.style.left=(bcol*COLW-14)+'px';fold.style.top=((bfy||fp.y)-7)+'px';world.appendChild(fold);
       }
     });
     return firstYc;
   }
   vline(0,rh,colY[0]);
   walk(T,0,colY[0],0,null,'r');
-  world.style.width=(Math.max(0,...boxEls.map(b=>b.col*COLW))+boxW+80)+'px';
+  world.style.width=(laneMax*COLW+boxW+80)+'px';   // 车道数决定宽度
   world.style.height=(Math.max(0,...Object.values(colY))+80)+'px';
   applyT();hint.textContent=cur+' · '+T.s.length+'+ 轮';
   const expect=subtreeDirs((NBA[cur]||{}).dir||'').length,got=renderedNodes.size;   // 一致性 gate：渲染节点集(含折叠chip子树)应==tree.json 子树

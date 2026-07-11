@@ -57,6 +57,8 @@ grep -q 'renderedNodes' "$H" && grep -q '一致性告警' "$H" && pass "B 渲染
 grep -q 'function cleanKeep' "$H" && pass "compact 摘要保留(不删)" || bad "compact 保留缺失"
 grep -q 'This session is being continued' "$H" && grep -q "cx?'u':role" "$H" && pass "compact 检测(以此开头)+强制🧑" || bad "compact 检测缺失"
 grep -q "turn.cx?' cbox'" "$H" && grep -q 'class="clab">⟳ compact' "$H" && pass "compact 换色框+⟳标记(inline主干)" || bad "compact 标记缺失"
+# D 车道底座(#8):每条分支独占一列
+grep -q 'let laneMax=0' "$H" && grep -q 'bcol=++laneMax' "$H" && pass "D 车道布局:每分支独占一列(不共列堆叠)" || bad "车道布局缺失"
 
 echo "----"; [ $fail -eq 0 ] && echo "✓ 全过" || echo "✗ 有失败项"
 exit $fail
