@@ -84,6 +84,9 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 .box.bhead{border-left:3px solid var(--blue)!important}
 .bbadge{display:inline-block;background:var(--blue);color:#fff;font-size:9px;font-weight:700;border-radius:5px;padding:0 5px;margin-right:4px;vertical-align:1px}
 .bbadge.cont{background:#7a828e}
+.ndcode .src{border-radius:4px;padding:0 4px;font-size:8px;font-weight:700;font-family:-apple-system,"Microsoft YaHei",system-ui}
+.src-cx{background:#fdf1e3;color:#b5761e}.src-cu{background:#eef0ff;color:#5a5ad6}
+.chip.contchip{background:#f2f3f5;border-color:#d6dae1;color:#6b7280;border-style:dashed}
 .rd{background:#eef0f3;color:#9aa0ac;border-radius:5px;padding:0 4px;font-size:10px;white-space:nowrap}
 .ndm{color:#aab0bc;font-size:8.5px}.ndm b2{color:#7b8393;font-weight:700}
 .chip{position:absolute;padding:4px 10px;border-radius:11px;font-size:10.5px;background:#eef4ff;border:1px solid #cfe0ff;color:#3358c4;cursor:pointer;white-space:nowrap}
@@ -111,7 +114,7 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
   </div>
 </div>
 <script>
-let NBD={},NBA={},KIDS={},ROOTS=[],TREES={},CACHE={};
+let NBD={},NBA={},KIDS={},ROOTS=[],TREES={},CACHE={},NODE_COMPACT={};
 let cur=null,collapsed=new Set(),expanded=new Set(),allExp=false,showTs=true,boxW=300,curAbort=null;
 let view={tx:40,ty:70,k:1},drag=null,dragMoved=false,rz=null,boxEls=[];
 const world=document.getElementById('world'),stage=document.getElementById('stage'),hint=document.getElementById('hint'),edges=document.getElementById('edges'),side=document.getElementById('side');
@@ -154,15 +157,18 @@ function clean(t){
   return t;
 }
 function coalesce(turns){const m=[];for(const [role,ts,txt] of turns){const c=clean(txt);if(!c)continue;if(m.length&&m[m.length-1][0]===role)m[m.length-1][1]+=' '+c;else m.push([role,c,ts]);}return m;}
+function cmpChild(a,b){const ta=(NBD[a]||{}).t0||'',tb=(NBD[b]||{}).t0||'';if(ta<tb)return -1;if(ta>tb)return 1;return a<b?-1:(a>b?1:0);}  // 稳定全序：相等按 dir 兜底(修破损比较器)
 function buildTree(dir){
   const spine=[],branches=[];let d=dir;
   while(d){
-    const turns=CACHE[d]||[];
-    turns.forEach((x,i)=>{const o={r:x[0],t:x[1],ts:x[2]};if(i===0)o.nd=d;spine.push(o);});   // 每节点首 turn 记下节点 dir → 供 📖 记忆徽标
+    const turns=CACHE[d]||[],tool=(NBD[d]||{}).source_tool||'Claude Code';
+    turns.forEach((x,i)=>{const o={r:x[0],t:x[1],ts:x[2],tool:tool};if(i===0)o.nd=d;spine.push(o);});   // 每 turn 带 source_tool；每节点首 turn 记 nd
     const last=spine.length-1;
-    const ch=(KIDS[d]||[]).slice().sort((a,b)=>((NBD[a].t0||'')<(NBD[b].t0||'')?-1:1));
-    for(const o of ch.slice(1))branches.push([Math.max(last,0),buildTree(o)]);
-    d=ch[0]||null;
+    const ch=(KIDS[d]||[]).slice().sort(cmpChild);
+    const ps=new Set((NBD[d]||{}).sessions||[]);                       // 主线优先"与父同 session 的续接"，其次最早(稳定序)
+    const mi=ch.findIndex(c=>((NBD[c]||{}).sessions||[]).some(s=>ps.has(s))),main=mi>=0?ch[mi]:ch[0];
+    for(const o of ch)if(o!==main)branches.push([Math.max(last,0),buildTree(o)]);
+    d=main||null;
   }
   return {s:spine,b:branches};
 }
@@ -178,18 +184,19 @@ function render(){
   const rh=rb.offsetHeight;boxEls.push({el:rb,col:0});colY[0]=rh+13;
   function box(turn,id,col,yy,bhead){
     const ex=isExp(id);const el=document.createElement('div');el.className='box '+turn.r+(ex?' exp':'')+(bhead?' bhead':'');el.dataset.id=id;
-    const badge=bhead?'<span class="bbadge'+(bhead.cont?' cont':'')+'">⑂ '+esc(bhead.name)+(bhead.cont?'·续':'')+'</span>':'';
+    const badge=bhead?'<span class="bbadge'+(bhead.kind==='cont'?' cont':'')+'">'+(bhead.kind==='cont'?'⟳ ':'⑂ ')+esc(bhead.name)+(bhead.aiFirst?'·续':'')+(bhead.xtool?'·⌥'+esc(bhead.xtool):'')+'</span>':'';
     el.innerHTML='<div class="rz"></div><div class="tx">'+badge+'<span class="rl">'+(turn.r==='u'?'我':'AI')+'</span>'+fmtTx(esc(ex?turn.t:prev20(turn.t)))+'</div>'+(showTs&&turn.ts?'<div class="ts">'+esc(turn.ts)+'</div>':'');
     el.style.left=(col*COLW)+'px';el.style.top=yy+'px';world.appendChild(el);boxEls.push({el:el,col:col});
-    if(turn.nd){const n=NBD[turn.nd]||{};const ss=n.sessions||[];const sid=ss[0]||'';
+    if(turn.nd){const n=NBD[turn.nd]||{};const ss=n.sessions||[];const sid=ss[0]||'';const tool=n.source_tool||'Claude Code';
       const meta=[];if(n.n_records)meta.push(fmtN(n.n_records)+'轮');const dr=fmtDur(n.t0,n.t1);if(dr)meta.push(dr);if(ss.length>1)meta.push('+'+(ss.length-1)+'会话');
+      const src=tool!=='Claude Code'?' <span class="src src-'+(tool==='Codex'?'cx':'cu')+'">'+esc(tool)+'</span>':'';   // 跨源节点标来源工具
       const lab=document.createElement('div');lab.className='ndcode';lab.dataset.sid=sid;lab.title='点击复制会话编号 session-id（把它报给智能体即可"生成续接包"）';
-      lab.innerHTML='<b>'+esc((n.alias||'').split('-').pop())+'</b> '+esc(sid)+' <span class="cp">⧉复制</span>'+(meta.length?' <span class="ndm">'+esc(meta.join(' · '))+'</span>':'');
+      lab.innerHTML='<b>'+esc((n.alias||'').split('-').pop())+'</b>'+src+' '+esc(sid)+' <span class="cp">⧉复制</span>'+(meta.length?' <span class="ndm">'+esc(meta.join(' · '))+'</span>':'');
       lab.style.left=(col*COLW)+'px';lab.style.top=(yy-13)+'px';world.appendChild(lab);}
     return el.offsetHeight;
   }
   function vline(col,y1,y2){edges.insertAdjacentHTML('beforeend',`<path d="M${col*COLW+9},${y1} L${col*COLW+9},${y2}" stroke="#c9d3e6" stroke-width="1.5" fill="none"/>`);}
-  function bconn(fx,fy,tx,ty){const mx=fx+9;edges.insertAdjacentHTML('beforeend',`<path d="M${mx},${fy} L${mx},${ty} L${tx},${ty}" stroke="#4C7EF3" stroke-width="2.6" fill="none"/><circle cx="${mx}" cy="${fy}" r="3.8" fill="#4C7EF3"/>`);}
+  function bconn(fx,fy,tx,ty,cont){const mx=fx+9,c=cont?'#9aa0ac':'#4C7EF3',da=cont?' stroke-dasharray="4 3"':'';edges.insertAdjacentHTML('beforeend',`<path d="M${mx},${fy} L${mx},${ty} L${tx},${ty}" stroke="${c}" stroke-width="2.6" fill="none"${da}/><circle cx="${mx}" cy="${fy}" r="3.8" fill="${c}"/>`);}
   // 主线先连续铺完（col 只随本段指令推进 y，不因分支而空等），再把分支放到右侧列（各列自己的 colY 防重叠）
   function walk(t,col,startY,forkX,forkYc,path,bmeta){
     let y=Math.max(startY,colY[col]||0);const pos=[];let firstYc=null,prevBottom=null;
@@ -199,14 +206,18 @@ function render(){
       if(firstYc===null)firstYc=yc;prevBottom=y+h;y=y+h+9;
     });
     colY[col]=y;
-    if(forkYc!==null&&firstYc!==null)bconn(forkX,forkYc,col*COLW,firstYc);
+    if(forkYc!==null&&firstYc!==null)bconn(forkX,forkYc,col*COLW,firstYc,bmeta&&bmeta.kind==='cont');
+    const spineTool=(t.s[0]||{}).tool||'Claude Code';   // 本 spine 来源工具 → 判异源 fork
     t.b.forEach((br,bi)=>{
       const ai=Math.min(br[0],pos.length-1);const fp=pos[ai];if(!fp)return;const bp=path+'.b'+bi;
-      const b0=br[1].s&&br[1].s[0],bnd=b0&&b0.nd;                          // 分支首块：取分支名 + 是否"续接"（首轮为AI）
-      const bname=bnd?((NBD[bnd].alias||'').split('-').pop()):('分支'+(bi+1)),bm={name:bname,cont:!!(b0&&b0.r==='a')};
+      const b0=br[1].s&&br[1].s[0],bnd=b0&&b0.nd;
+      const bname=bnd?((NBD[bnd].alias||'').split('-').pop()):('分支'+(bi+1));
+      const btool=(b0&&b0.tool)||'Claude Code';
+      const bm={name:bname,aiFirst:!!(b0&&b0.r==='a'),kind:NODE_COMPACT[bnd]?'cont':'fork',xtool:btool!==spineTool?btool:null};   // cont=段.md首轮是压缩摘要(自动续接)；否则=fork
+      const gl=(bm.kind==='cont'?'⟳ ':'⑂ ')+bname+(bm.xtool?' ·⌥'+bm.xtool:'');
       if(collapsed.has(bp)){
-        const cy=Math.max(fp.y,colY[col+1]||0);const chip=document.createElement('div');chip.className='chip';chip.dataset.exp=bp;chip.textContent='⑂ '+bname+' · '+cnt(br[1])+'条';chip.style.left=((col+1)*COLW)+'px';chip.style.top=cy+'px';world.appendChild(chip);
-        const chh=chip.offsetHeight;colY[col+1]=cy+chh+9;bconn(col*COLW,fp.yc,(col+1)*COLW,cy+chh/2);
+        const cy=Math.max(fp.y,colY[col+1]||0);const chip=document.createElement('div');chip.className='chip'+(bm.kind==='cont'?' contchip':'');chip.dataset.exp=bp;chip.textContent=gl+' · '+cnt(br[1])+'条';chip.style.left=((col+1)*COLW)+'px';chip.style.top=cy+'px';world.appendChild(chip);
+        const chh=chip.offsetHeight;colY[col+1]=cy+chh+9;bconn(col*COLW,fp.yc,(col+1)*COLW,cy+chh/2,bm.kind==='cont');
       }else{
         const fold=document.createElement('div');fold.className='fold';fold.dataset.fold=bp;fold.textContent='−';fold.style.left=(col*COLW+16)+'px';fold.style.top=(fp.yc-7)+'px';world.appendChild(fold);
         walk(br[1],col+1,fp.y,col*COLW,fp.yc,bp,bm);
@@ -275,7 +286,7 @@ function renderJourney(alias){
     const seg=(n.alias||'').split('-').pop();
     const sm=esc((n['摘要']||n.auto_summary||'').replace(/\s+/g,' ').trim());
     h+='<div class="jcard" data-nd="'+esc(dir)+'" style="margin-left:'+(depth*15)+'px"><div class="jt">'+esc(seg)+(depth>0?'<span class="ar">↳ 分支</span>':'')+'</div><div class="js">'+(sm||'（无摘要）')+'</div><div class="jmem"></div></div>';
-    (KIDS[dir]||[]).slice().sort((a,b)=>((NBD[a].t0||'')<(NBD[b].t0||'')?-1:1)).forEach(c=>walk(c,depth+1));
+    (KIDS[dir]||[]).slice().sort(cmpChild).forEach(c=>walk(c,depth+1));
   }
   walk(rootDir,0);jc.innerHTML=h;
   jc.querySelectorAll('.jcard').forEach(el=>el.onclick=()=>toggleJCard(el));
@@ -311,7 +322,7 @@ async function ensureTree(alias,sig){
   const rootDir=NBA[alias].dir,dirs=subtreeDirs(rootDir);
   await Promise.all(dirs.map(async d=>{
     if(CACHE[d]!==undefined)return;
-    try{const r=await fetch(encodeURI(d+'/段.md'),sig?{signal:sig}:undefined);CACHE[d]=r.ok?coalesce(parseTurns(await r.text())):[];}catch(e){if(!sig||e.name!=='AbortError')CACHE[d]=[];}
+    try{const r=await fetch(encodeURI(d+'/段.md'),sig?{signal:sig}:undefined);if(r.ok){const rw=parseTurns(await r.text());NODE_COMPACT[d]=rw.length>0&&COMPACT.some(k=>(rw[0][2]||'').slice(0,240).includes(k));CACHE[d]=coalesce(rw);}else CACHE[d]=[];}catch(e){if(!sig||e.name!=='AbortError')CACHE[d]=[];}
   }));
   if(sig&&sig.aborted)return;
   TREES[alias]=buildTree(rootDir);

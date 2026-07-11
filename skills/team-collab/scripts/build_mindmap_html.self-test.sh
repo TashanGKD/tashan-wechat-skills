@@ -39,6 +39,11 @@ grep -q 'function zoomBy' "$H" && pass "QW +/− 缩放绕中心" || bad "缩放
 grep -q 'curAbort' "$H" && grep -q 'AbortController' "$H" && pass "QW 切换取消在途请求" || bad "在途取消缺失"
 grep -q '暂无对话' "$H" && pass "QW 空树≠读取失败" || bad "空树态缺失"
 grep -q "split('-').pop()" "$H" && pass "QW alias 取本级名 (split-)" || bad "alias 分割未修"
+# P1 分叉语义批
+grep -q 'function cmpChild' "$H" && pass "P1 稳定比较器 cmpChild(相等返回0)" || bad "cmpChild 缺失"
+grep -q 'NODE_COMPACT' "$H" && pass "P1 compact 自动续接检测" || bad "compact 检测缺失"
+grep -q '⟳ ' "$H" && grep -q "kind==='cont'" "$H" && pass "P1 续接⟳ vs fork⑂ 双标" || bad "续接/fork 双标缺失"
+grep -q 'class="src ' "$H" && grep -q '·⌥' "$H" && pass "P1 跨源来源标 + ⌥源切换标" || bad "跨源可见性缺失"
 
 echo "----"; [ $fail -eq 0 ] && echo "✓ 全过" || echo "✗ 有失败项"
 exit $fail
