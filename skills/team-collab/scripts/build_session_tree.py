@@ -118,6 +118,17 @@ def apply_grafts(objs, sess):
     def _last_rec_of(target_sid):
         cands = [u for u in objs if target_sid in sess.get(u, ())]
         return max(cands, key=lambda u: objs[u].get("timestamp") or "") if cands else None
+    def _would_cycle(child, anchor):
+        """接 child.parentUuid=anchor 是否会成环：anchor 沿实时 parentUuid 上溯若能到 child，则 child 已是 anchor
+        的祖先，接上即闭环。必须用**实时** parentUuid（接枝在循环内逐个 mutate，预建的子树快照会漏判 → 正是本 bug 根因）。"""
+        if child == anchor:
+            return True
+        x, seen = anchor, set()
+        while x in objs and x not in seen:
+            if x == child:
+                return True
+            seen.add(x); x = objs[x].get("parentUuid")
+        return False
     n = 0
     for u, o in list(objs.items()):
         if o.get("parentUuid"):
@@ -129,6 +140,8 @@ def apply_grafts(objs, sess):
         ref = r.get("sid") if isinstance(r, dict) else r
         anchor = _last_rec_of(ref) if ref else None
         if anchor and anchor != u and o.get("_session_id") not in sess.get(anchor, ()):
+            if _would_cycle(u, anchor):          # 锚点已在本记录子树内 → 接上成环，宁可留原生根、不丢
+                continue
             o["parentUuid"] = anchor
             n += 1
 
@@ -178,6 +191,8 @@ def apply_grafts(objs, sess):
         if not cands:
             continue
         anchor = max(cands, key=lambda v: objs[v].get("timestamp") or "")
+        if _would_cycle(root, anchor):              # 锚点已在续接子树内（own 快照陈旧会漏判）→ 成环，跳过、不丢
+            continue
         objs[root]["parentUuid"] = anchor           # 接链首到前情叶子 → 整个续接子树成前情节点下的分支
         grafted_roots.add(root); n += 1
     return n
