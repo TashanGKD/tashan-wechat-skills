@@ -94,6 +94,9 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 .bar{position:absolute;right:14px;bottom:14px;display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
 .bar button{width:30px;height:28px;border:none;background:#fff;border-radius:7px;cursor:pointer;font-size:15px;color:var(--sec)}.bar button:hover{background:#f1f3f7}
 .hint{position:absolute;left:14px;top:12px;font-size:11.5px;color:var(--mut);background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 9px;pointer-events:none}
+.q{border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12.5px;width:160px;outline:none}.q:focus{border-color:var(--blue)}
+.it.hide{display:none}
+.box.hit{outline:2px solid #f4a63a;outline-offset:1px}
 </style></head><body>
 <header>
 <button class="tgl" id="sideT">◀ 列表</button>
@@ -101,6 +104,7 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 <h1>会话思维画布 <span id="cnt" style="font-weight:400;color:var(--mut);font-size:13px"></span></h1>
 <p><b>↓</b>接着的指令/回复 <b>→</b>分支 · 蓝=指令 灰=回复 · 现读段.md · 拖拽·缩放·点框看全文·拖右边框调宽</p>
 <div class="spacer"></div>
+<input class="q" id="q" placeholder="🔍 搜对话 / 内容" autocomplete="off">
 <button class="tgl" id="tsT">🕐 时间</button>
 <button class="eall" id="eall">▤ 全部展开</button>
 </header>
@@ -173,6 +177,7 @@ function buildTree(dir){
   return {s:spine,b:branches};
 }
 function subtreeDirs(dir){const out=[dir];for(const c of (KIDS[dir]||[]))out.push(...subtreeDirs(c));return out;}
+function seedCollapse(t,path,depth){if(!t)return;const wide=t.b.length>=4;t.b.forEach((br,bi)=>{const bp=path+'.b'+bi;if(depth>=2||wide)collapsed.add(bp);seedCollapse(br[1],bp,depth+1);});}  // 默认折叠：深(≥2层)或宽(同点≥4支)→ 消初始过载
 // ── 渲染 ──
 function render(){
   const T=TREES[cur];if(!T)return;
@@ -330,10 +335,11 @@ async function ensureTree(alias,sig){
 async function show(a){
   if(curAbort)curAbort.abort();curAbort=new AbortController();const sig=curAbort.signal;   // 切换对话→取消上一条在途大文件请求
   cur=a;expanded.clear();collapsed=new Set();allExp=false;document.getElementById('eall').textContent='▤ 全部展开';
+  try{history.replaceState(null,'','#c='+encodeURIComponent(a));}catch(e){}   // 深链：URL 承载当前对话，刷新/分享可回到
   hint.textContent='加载 '+a+' 的段.md…';
   side.querySelectorAll('.it').forEach(e=>e.classList.toggle('on',e.dataset.a===a));
   renderJourney(a);          // 研究历程栏（用 tree.json 结构即可，卡片点开才现读 .md）
-  await ensureTree(a,sig);if(sig.aborted)return;render();fit();   // 先 render 定 world 尺寸，再 fit 居中
+  await ensureTree(a,sig);if(sig.aborted)return;seedCollapse(TREES[a],'r',1);render();fit();   // 深/宽分支默认折叠→再 render 定尺寸→fit 居中
 }
 async function boot(){
   try{
@@ -344,9 +350,20 @@ async function boot(){
     if(!ROOTS.length){hint.textContent='该对话树暂无对话（tree.json 里没有根节点）。';return;}   // 空树≠读取失败
     buildList();
     const cc=ROOTS.filter(n=>(n.source_tool||'Claude Code')==='Claude Code').sort(byNum);
-    show((cc[0]||ROOTS[0]).alias);
+    const hc=decodeURIComponent(((location.hash||'').match(/c=([^&]+)/)||[])[1]||'');   // 深链：优先按 URL #c=<对话> 打开
+    show(hc&&NBA[hc]?hc:(cc[0]||ROOTS[0]).alias);
   }catch(e){hint.textContent='读 tree.json 失败：'+e+'（是否用 serve.py 起了服务？file:// 直接打开会失败）';}
 }
+// ── 搜索（左栏即时过滤 + 当前对话内命中高亮并居中）+ 深链回退 ──
+document.getElementById('q').addEventListener('input',function(){
+  const q=this.value.trim().toLowerCase();
+  side.querySelectorAll('.it').forEach(e=>e.classList.toggle('hide',!!q&&!e.textContent.toLowerCase().includes(q)));
+  let first=null;
+  world.querySelectorAll('.box:not(.root)').forEach(b=>{const hit=!!q&&b.textContent.toLowerCase().includes(q);b.classList.toggle('hit',hit);if(hit&&!first)first=b;});
+  if(first){const L=parseFloat(first.style.left),T=parseFloat(first.style.top);view.tx=stage.clientWidth/2-L*view.k;view.ty=stage.clientHeight/3-T*view.k;applyT();}
+});
+document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Escape'){e.target.value='';e.target.dispatchEvent(new Event('input'));}});
+window.addEventListener('hashchange',()=>{const h=decodeURIComponent(((location.hash||'').match(/c=([^&]+)/)||[])[1]||'');if(h&&NBA[h]&&h!==cur)show(h);});
 boot();
 </script></body></html>"""
 
