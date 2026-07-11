@@ -101,6 +101,8 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 .q{border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12.5px;width:160px;outline:none}.q:focus{border-color:var(--blue)}
 .it.hide{display:none}
 .box.hit{outline:2px solid #f4a63a;outline-offset:1px}
+.tbreak{position:absolute;left:0;height:0;border-top:1px dashed #EF9F27;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2}
+.tbreak span{background:#FAEEDA;color:#854F0B;font-size:10px;border-radius:10px;padding:1px 9px;border:1px solid #EF9F27;white-space:nowrap}
 </style></head><body>
 <header>
 <button class="tgl" id="sideT">◀ 列表</button>
@@ -109,7 +111,7 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 <p><b>↓</b>接着的指令/回复 <b>→</b>分支 · 蓝=指令 灰=回复 · 现读段.md · 拖拽·缩放·点框看全文·拖右边框调宽</p>
 <div class="spacer"></div>
 <input class="q" id="q" placeholder="🔍 搜对话 / 内容" autocomplete="off">
-<button class="tgl" id="tsT">🕐 时间</button>
+<button class="tgl off" id="tsT">🕐 时间轴</button>
 <button class="eall" id="eall">▤ 全部展开</button>
 </header>
 <div class="wrap journey-collapsed" id="wrap">
@@ -123,7 +125,7 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 </div>
 <script>
 let NBD={},NBA={},KIDS={},ROOTS=[],TREES={},CACHE={},NODE_COMPACT={},NODE_FAILED={};
-let cur=null,collapsed=new Set(),expanded=new Set(),allExp=false,showTs=true,boxW=300,curAbort=null;
+let cur=null,collapsed=new Set(),expanded=new Set(),allExp=false,showTs=true,boxW=300,curAbort=null,timeAxis=false;
 let view={tx:40,ty:70,k:1},drag=null,dragMoved=false,rz=null,boxEls=[];
 const world=document.getElementById('world'),stage=document.getElementById('stage'),hint=document.getElementById('hint'),edges=document.getElementById('edges'),side=document.getElementById('side');
 function esc(s){return (s||'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
@@ -133,6 +135,19 @@ function fmtDur(t0,t1){if(!t0||!t1)return '';const a=new Date(t0.replace(' ','T'
 function fmtTx(s){return s.replace(/\[已脱敏[:：]([^\]]*)\]/g,'<span class="rd">🔒$1</span>');}   // 脱敏标记→淡色pill
 function fmtTools(s){return s.replace(/(?:⟦T:[^⟧]*⟧\s*)+/g,m=>{const ns=[...m.matchAll(/⟦T:([^⟧]*)⟧/g)].map(x=>x[1]),u=[...new Set(ns)];return '<span class="tpill">🔧 '+ns.length+' 步'+(u.length&&u.length<=3?'·'+u.join('·'):'')+'</span> ';});}  // 连续工具调用→一个折叠 pill
 function subCount(dir){let c=1;for(const k of (KIDS[dir]||[]))c+=subCount(k);return c;}
+function parseTs(s){const t=Date.parse((s||'').replace(' ','T'));return isNaN(t)?0:t;}
+function fmtGap(ms){const m=Math.round(ms/6e4);if(m<60)return m+' 分';const h=m/60;if(h<24)return (h<10?h.toFixed(1):Math.round(h))+' 小时';return Math.round(h/24)+' 天';}
+function buildTimeMap(tree){   // 时间→Y:活跃段按时间铺开,>30分空档折成固定高 ▽ 断轴(压缩空档)
+  const arr=[];(function rec(t){t.s.forEach(x=>{if(x.ts)arr.push(x.ts);});t.b.forEach(b=>rec(b[1]));})(tree);
+  const uniq=[...new Set(arr)].sort();const map={},breaks=[];let y=0,prev=null;
+  const MIN=36,MAXP=220,THRESH=18e5,BREAK=46,SCALE=36/18e4;   // 3分→36px基线;>30分(18e5ms)空档→折叠成 46px ▽
+  for(const t of uniq){
+    if(prev!==null){const d=parseTs(t)-parseTs(prev);
+      if(d>THRESH){breaks.push({y:y+BREAK*0.5,d:d});y+=BREAK;}
+      else y+=Math.max(MIN,Math.min(MAXP,d*SCALE));}
+    map[t]=y;prev=t;}
+  return {map,breaks};
+}
 function cnt(t){return t.s.length+t.b.reduce((a,c)=>a+cnt(c[1]),0);}
 function isExp(id){return allExp!==expanded.has(id);}
 function applyT(){world.style.transform=`translate(${view.tx}px,${view.ty}px) scale(${view.k})`;}
@@ -198,11 +213,11 @@ function seedCollapse(t,path,depth){if(!t)return;const wide=t.b.length>=4;t.b.fo
 // ── 渲染 ──
 function render(){
   const T=TREES[cur];if(!T)return;
-  [...world.querySelectorAll('.box,.chip,.fold,.ndcode')].forEach(e=>e.remove());
+  [...world.querySelectorAll('.box,.chip,.fold,.ndcode,.tbreak')].forEach(e=>e.remove());
   edges.innerHTML='';boxEls=[];
   const renderedNodes=new Set();   // 一致性 gate：渲染覆盖的节点集，末尾与 tree.json 子树对比
   const COLW=boxW+24;world.style.setProperty('--bw',boxW+'px');
-  const colY={};let laneMax=0;   // colY=每列下一个空闲y;laneMax=车道分配器:每条分支独占一列(不再共列堆叠)
+  const colY={};let laneMax=0;const TM=timeAxis?buildTimeMap(T):null;   // colY=每列下一个空闲y;laneMax=车道分配器;TM=时间轴映射(开时Y按时间)
   const rb=document.createElement('div');rb.className='box root';rb.innerHTML='<span class="tx">'+esc(cur)+'</span>';rb.style.left='0px';rb.style.top='0px';world.appendChild(rb);
   const rh=rb.offsetHeight;boxEls.push({el:rb,col:0});colY[0]=rh+13;
   function box(turn,id,col,yy,bhead){
@@ -227,6 +242,7 @@ function render(){
   function walk(t,col,startY,forkX,forkYc,path,bmeta){
     let y=Math.max(startY,colY[col]||0);const pos=[];let firstYc=null,prevBottom=null;
     t.s.forEach((turn,i)=>{
+      if(TM&&TM.map[turn.ts]!=null)y=Math.max(y,TM.map[turn.ts]);   // 时间开:对齐到全局时间Y,但不早于上一框(spill 防叠)
       const id=path+'/'+i;const h=box(turn,id,col,y,(i===0?bmeta:null));const yc=y+h/2;pos[i]={y:y,yc:yc,bottom:y+h};
       if(prevBottom!==null)vline(col,prevBottom,y);
       if(firstYc===null)firstYc=yc;prevBottom=y+h;y=y+h+9;
@@ -257,7 +273,8 @@ function render(){
   walk(T,0,colY[0],0,null,'r');
   world.style.width=(laneMax*COLW+boxW+80)+'px';   // 车道数决定宽度
   world.style.height=(Math.max(0,...Object.values(colY))+80)+'px';
-  applyT();hint.textContent=cur+' · '+T.s.length+'+ 轮';
+  if(TM&&TM.breaks.length){const ww=parseFloat(world.style.width);for(const b of TM.breaks){const el=document.createElement('div');el.className='tbreak';el.style.top=b.y+'px';el.style.width=ww+'px';el.innerHTML='<span>▽ 隔 '+esc(fmtGap(b.d))+'</span>';world.appendChild(el);}}   // 空档折叠断轴
+  applyT();hint.textContent=cur+' · '+T.s.length+'+ 轮'+(timeAxis?' · 🕐时间轴':'');
   const expect=subtreeDirs((NBA[cur]||{}).dir||'').length,got=renderedNodes.size;   // 一致性 gate：渲染节点集(含折叠chip子树)应==tree.json 子树
   if(got<expect)console.warn('[思维画布] 一致性告警：对话「'+cur+'」应覆盖 '+expect+' 节点，实际 '+got+'（缺 '+(expect-got)+'），可能有节点被静默丢弃');
 }
@@ -288,7 +305,7 @@ document.getElementById('zi').onclick=()=>zoomBy(1.2);
 document.getElementById('zo').onclick=()=>zoomBy(1/1.2);
 document.getElementById('zf').onclick=fit;
 document.getElementById('eall').onclick=function(){allExp=!allExp;expanded.clear();this.textContent=allExp?'▤ 全部收起':'▤ 全部展开';render();};
-document.getElementById('tsT').onclick=function(){showTs=!showTs;this.classList.toggle('off',!showTs);render();};
+document.getElementById('tsT').onclick=function(){timeAxis=!timeAxis;this.classList.toggle('off',!timeAxis);render();};   // 时间轴开关(Y=时间·压缩空档▽)
 document.getElementById('sideT').onclick=function(){const w=document.getElementById('wrap');const c=w.classList.toggle('side-collapsed');this.textContent=c?'▶ 列表':'◀ 列表';};
 // ── 节点记忆（研究历程 + 动机，现读 .md，结构化显示）──
 const MEMCACHE={};

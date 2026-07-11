@@ -59,6 +59,9 @@ grep -q 'This session is being continued' "$H" && grep -q "cx?'u':role" "$H" && 
 grep -q "turn.cx?' cbox'" "$H" && grep -q 'class="clab">⟳ compact' "$H" && pass "compact 换色框+⟳标记(inline主干)" || bad "compact 标记缺失"
 # D 车道底座(#8):每条分支独占一列
 grep -q 'let laneMax=0' "$H" && grep -q 'bcol=++laneMax' "$H" && pass "D 车道布局:每分支独占一列(不共列堆叠)" || bad "车道布局缺失"
+# D 时间轴开关(压缩空档断轴 ▽)
+grep -q 'function buildTimeMap' "$H" && grep -q 'timeAxis' "$H" && pass "D 时间轴开关(Y=时间映射)" || bad "时间轴开关缺失"
+grep -q "className='tbreak'" "$H" && grep -q '▽ 隔' "$H" && pass "D 压缩空档断轴 ▽(空档折叠)" || bad "▽ 断轴缺失"
 
 echo "----"; [ $fail -eq 0 ] && echo "✓ 全过" || echo "✗ 有失败项"
 exit $fail
