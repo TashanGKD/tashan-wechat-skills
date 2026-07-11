@@ -53,6 +53,10 @@ grep -q 'function fmtTools' "$H" && grep -q 'class="tpill"' "$H" && grep -q '⟦
 grep -q 'empty:true' "$H" && grep -q 'class="emptx"' "$H" && pass "B 空节点占位框(不消失)" || bad "空节点占位缺失"
 grep -q 'NODE_FAILED' "$H" && pass "B 拉取失败标记" || bad "拉取失败标记缺失"
 grep -q 'renderedNodes' "$H" && grep -q '一致性告警' "$H" && pass "B 渲染 vs tree.json 一致性 gate" || bad "一致性 gate 缺失"
+# compact = 主干inline换色框(用户对齐)
+grep -q 'function cleanKeep' "$H" && pass "compact 摘要保留(不删)" || bad "compact 保留缺失"
+grep -q 'This session is being continued' "$H" && grep -q "cx?'u':role" "$H" && pass "compact 检测(以此开头)+强制🧑" || bad "compact 检测缺失"
+grep -q "turn.cx?' cbox'" "$H" && grep -q 'class="clab">⟳ compact' "$H" && pass "compact 换色框+⟳标记(inline主干)" || bad "compact 标记缺失"
 
 echo "----"; [ $fail -eq 0 ] && echo "✓ 全过" || echo "✗ 有失败项"
 exit $fail

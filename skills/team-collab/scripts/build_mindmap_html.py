@@ -91,6 +91,8 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 .ndm{color:#aab0bc;font-size:8.5px}.ndm b2{color:#7b8393;font-weight:700}
 .tpill{background:#f0f2f5;color:#8b93a1;border-radius:5px;padding:0 5px;font-size:9.5px;white-space:nowrap}
 .emptx{color:#b0b6c0;font-style:italic}.box.empt{background:#fafbfc;border-style:dashed}
+.box.cbox{border-color:#e0a03a!important;background:#fdf6ea;box-shadow:0 0 0 1px #e0a03a55}   /* compact 续接点:琥珀框(主干里,非分支) */
+.clab{display:inline-block;background:#e0a03a;color:#fff;font-size:9px;font-weight:700;border-radius:5px;padding:0 5px;margin-right:4px;vertical-align:1px}
 .chip{position:absolute;padding:4px 10px;border-radius:11px;font-size:10.5px;background:#eef4ff;border:1px solid #cfe0ff;color:#3358c4;cursor:pointer;white-space:nowrap}
 .fold{position:absolute;width:15px;height:15px;border-radius:50%;background:#fff;border:1px solid var(--blue);color:var(--blue);font-size:11px;line-height:13px;text-align:center;cursor:pointer;z-index:6}
 .bar{position:absolute;right:14px;bottom:14px;display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
@@ -166,19 +168,27 @@ function clean(t){
   if(/^[0-9a-fA-F_\- ]{6,60}$/.test(t))return null;
   return t;
 }
-function coalesce(turns){const m=[];for(const [role,ts,txt] of turns){const c=clean(txt);if(!c)continue;if(m.length&&m[m.length-1][0]===role)m[m.length-1][1]+=' '+c;else m.push([role,c,ts]);}return m;}
+function cleanKeep(t){return (t||'').replace(/⟨工具结果[\s\S]*?⟩/g,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();}  // 保留 compact 摘要:去噪但不判空不截
+function coalesce(turns){const m=[];for(const [role,ts,txt] of turns){
+  const cx=/^\s*This session is being continued/.test(txt||'');      // compact 摘要(以此开头,非讨论中提及):保留、强制作🧑、不与邻轮合并
+  let c;if(cx){c=cleanKeep(txt)||'（compact 续接摘要）';}else{c=clean(txt);if(!c)continue;}
+  if(!cx&&m.length&&m[m.length-1][0]===role&&!m[m.length-1][3])m[m.length-1][1]+=' '+c;
+  else m.push([cx?'u':role,c,ts,cx]);   // 第4位=compact 标记；compact 强制 🧑
+}return m;}
 function cmpChild(a,b){const ta=(NBD[a]||{}).t0||'',tb=(NBD[b]||{}).t0||'';if(ta<tb)return -1;if(ta>tb)return 1;return a<b?-1:(a>b?1:0);}  // 稳定全序：相等按 dir 兜底(修破损比较器)
 function buildTree(dir){
   const spine=[],branches=[];let d=dir;
   while(d){
     const turns=CACHE[d]||[],tool=(NBD[d]||{}).source_tool||'Claude Code';
     if(turns.length===0)spine.push({r:'a',t:'',ts:'',tool:tool,nd:d,empty:true});   // 空节点留占位框→不消失、子树不被丢
-    else turns.forEach((x,i)=>{const o={r:x[0],t:x[1],ts:x[2],tool:tool};if(i===0)o.nd=d;spine.push(o);});   // 每 turn 带 source_tool；每节点首 turn 记 nd
+    else turns.forEach((x,i)=>{const o={r:x[0],t:x[1],ts:x[2],tool:tool,cx:x[3]};if(i===0)o.nd=d;spine.push(o);});   // cx=compact摘要标记；首 turn 记 nd
     const last=spine.length-1;
     const ch=(KIDS[d]||[]).slice().sort(cmpChild);
-    const ps=new Set((NBD[d]||{}).sessions||[]);                       // 主线优先"与父同 session 的续接"，其次最早(稳定序)
-    const mi=ch.findIndex(c=>((NBD[c]||{}).sessions||[]).some(s=>ps.has(s))),main=mi>=0?ch[mi]:ch[0];
-    for(const o of ch)if(o!==main)branches.push([Math.max(last,0),buildTree(o)]);
+    const ps=new Set((NBD[d]||{}).sessions||[]);
+    let mi=ch.findIndex(c=>NODE_COMPACT[c]);                            // 主线：① compact 续接优先并进主干(连续,不分叉)
+    if(mi<0)mi=ch.findIndex(c=>((NBD[c]||{}).sessions||[]).some(s=>ps.has(s)));  // ② 同 session 续接，③ 最早(cmpChild)
+    const main=mi>=0?ch[mi]:ch[0];
+    for(const o of ch)if(o!==main)branches.push([Math.max(last,0),buildTree(o)]);   // 只有真 fork 才成分支
     d=main||null;
   }
   return {s:spine,b:branches};
@@ -197,10 +207,11 @@ function render(){
   const rh=rb.offsetHeight;boxEls.push({el:rb,col:0});colY[0]=rh+13;
   function box(turn,id,col,yy,bhead){
     if(turn.nd)renderedNodes.add(turn.nd);   // 一致性统计：记下渲染覆盖的节点
-    const ex=isExp(id);const el=document.createElement('div');el.className='box '+turn.r+(ex?' exp':'')+(bhead?' bhead':'')+(turn.empty?' empt':'');el.dataset.id=id;
+    const ex=isExp(id);const el=document.createElement('div');el.className='box '+turn.r+(ex?' exp':'')+(bhead?' bhead':'')+(turn.empty?' empt':'')+(turn.cx?' cbox':'');el.dataset.id=id;
     const badge=bhead?'<span class="bbadge'+(bhead.kind==='cont'?' cont':'')+'">'+(bhead.kind==='cont'?'⟳ ':'⑂ ')+esc(bhead.name)+(bhead.aiFirst?'·续':'')+(bhead.xtool?'·⌥'+esc(bhead.xtool):'')+'</span>':'';
+    const clab=turn.cx?'<span class="clab">⟳ compact 续接</span> ':'';   // compact 点标记(主干里换色框)
     const body=turn.empty?'<span class="emptx">（'+(NODE_FAILED[turn.nd]?'加载失败·刷新重试':'无可显示内容·中断/压缩/仅工具轮')+'）</span>':fmtTools(fmtTx(esc(ex?turn.t:prev20(turn.t))));
-    el.innerHTML='<div class="rz"></div><div class="tx">'+badge+'<span class="rl">'+(turn.r==='u'?'我':'AI')+'</span>'+body+'</div>'+(showTs&&turn.ts?'<div class="ts">'+esc(turn.ts)+'</div>':'');
+    el.innerHTML='<div class="rz"></div><div class="tx">'+badge+'<span class="rl">'+(turn.r==='u'?'我':'AI')+'</span>'+clab+body+'</div>'+(showTs&&turn.ts?'<div class="ts">'+esc(turn.ts)+'</div>':'');
     el.style.left=(col*COLW)+'px';el.style.top=yy+'px';world.appendChild(el);boxEls.push({el:el,col:col});
     if(turn.nd){const n=NBD[turn.nd]||{};const ss=n.sessions||[];const sid=ss[0]||'';const tool=n.source_tool||'Claude Code';
       const meta=[];if(n.n_records)meta.push(fmtN(n.n_records)+'轮');const dr=fmtDur(n.t0,n.t1);if(dr)meta.push(dr);if(ss.length>1)meta.push('+'+(ss.length-1)+'会话');
