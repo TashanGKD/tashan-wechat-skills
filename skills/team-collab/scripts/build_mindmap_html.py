@@ -103,6 +103,8 @@ header p{margin:0;font-size:11.5px;color:var(--sec)}header b{color:var(--blue)}
 .box.hit{outline:2px solid #f4a63a;outline-offset:1px}
 .tbreak{position:absolute;left:0;height:0;border-top:1px dashed #EF9F27;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2}
 .tbreak span{background:#FAEEDA;color:#854F0B;font-size:10px;border-radius:10px;padding:1px 9px;border:1px solid #EF9F27;white-space:nowrap}
+.taxline{position:absolute;width:0;border-left:1.5px solid #c9d3e6;z-index:1}
+.taxtick{position:absolute;left:2px;width:52px;text-align:right;font-size:9px;color:#8892a6;font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none;z-index:2}
 </style></head><body>
 <header>
 <button class="tgl" id="sideT">◀ 列表</button>
@@ -213,12 +215,12 @@ function seedCollapse(t,path,depth){if(!t)return;const wide=t.b.length>=4;t.b.fo
 // ── 渲染 ──
 function render(){
   const T=TREES[cur];if(!T)return;
-  [...world.querySelectorAll('.box,.chip,.fold,.ndcode,.tbreak')].forEach(e=>e.remove());
+  [...world.querySelectorAll('.box,.chip,.fold,.ndcode,.tbreak,.taxtick,.taxline')].forEach(e=>e.remove());
   edges.innerHTML='';boxEls=[];
   const renderedNodes=new Set();   // 一致性 gate：渲染覆盖的节点集，末尾与 tree.json 子树对比
   const COLW=boxW+24;world.style.setProperty('--bw',boxW+'px');
-  const colY={};let laneMax=0;const TM=timeAxis?buildTimeMap(T):null;   // colY=每列下一个空闲y;laneMax=车道分配器;TM=时间轴映射(开时Y按时间)
-  const rb=document.createElement('div');rb.className='box root';rb.innerHTML='<span class="tx">'+esc(cur)+'</span>';rb.style.left='0px';rb.style.top='0px';world.appendChild(rb);
+  const colY={};let laneMax=0;const TM=timeAxis?buildTimeMap(T):null;const XOFF=timeAxis?66:0;   // XOFF=时间轴开时给左边坐标轴留的边距
+  const rb=document.createElement('div');rb.className='box root';rb.innerHTML='<span class="tx">'+esc(cur)+'</span>';rb.style.left=XOFF+'px';rb.style.top='0px';world.appendChild(rb);
   const rh=rb.offsetHeight;boxEls.push({el:rb,col:0});colY[0]=rh+13;
   function box(turn,id,col,yy,bhead){
     if(turn.nd)renderedNodes.add(turn.nd);   // 一致性统计：记下渲染覆盖的节点
@@ -227,17 +229,17 @@ function render(){
     const clab=turn.cx?'<span class="clab">⟳ compact 续接</span> ':'';   // compact 点标记(主干里换色框)
     const body=turn.empty?'<span class="emptx">（'+(NODE_FAILED[turn.nd]?'加载失败·刷新重试':'无可显示内容·中断/压缩/仅工具轮')+'）</span>':fmtTools(fmtTx(esc(ex?turn.t:prev20(turn.t))));
     el.innerHTML='<div class="rz"></div><div class="tx">'+badge+'<span class="rl">'+(turn.r==='u'?'我':'AI')+'</span>'+clab+body+'</div>'+(showTs&&turn.ts?'<div class="ts">'+esc(turn.ts)+'</div>':'');
-    el.style.left=(col*COLW)+'px';el.style.top=yy+'px';world.appendChild(el);boxEls.push({el:el,col:col});
+    el.style.left=(col*COLW+XOFF)+'px';el.style.top=yy+'px';world.appendChild(el);boxEls.push({el:el,col:col});
     if(turn.nd){const n=NBD[turn.nd]||{};const ss=n.sessions||[];const sid=ss[0]||'';const tool=n.source_tool||'Claude Code';
       const meta=[];if(n.n_records)meta.push(fmtN(n.n_records)+'轮');const dr=fmtDur(n.t0,n.t1);if(dr)meta.push(dr);if(ss.length>1)meta.push('+'+(ss.length-1)+'会话');
       const src=tool!=='Claude Code'?' <span class="src src-'+(tool==='Codex'?'cx':'cu')+'">'+esc(tool)+'</span>':'';   // 跨源节点标来源工具
       const lab=document.createElement('div');lab.className='ndcode';lab.dataset.sid=sid;lab.title='点击复制会话编号 session-id（把它报给智能体即可"生成续接包"）';
       lab.innerHTML='<b>'+esc((n.alias||'').split('-').pop())+'</b>'+src+' '+esc(sid)+' <span class="cp">⧉复制</span>'+(meta.length?' <span class="ndm">'+esc(meta.join(' · '))+'</span>':'');
-      lab.style.left=(col*COLW)+'px';lab.style.top=(yy-13)+'px';world.appendChild(lab);}
+      lab.style.left=(col*COLW+XOFF)+'px';lab.style.top=(yy-13)+'px';world.appendChild(lab);}
     return el.offsetHeight;
   }
-  function vline(col,y1,y2){edges.insertAdjacentHTML('beforeend',`<path d="M${col*COLW+9},${y1} L${col*COLW+9},${y2}" stroke="#c9d3e6" stroke-width="1.5" fill="none"/>`);}
-  function bconn(fx,fy,tx,ty,cont){const mx=fx+9,c=cont?'#9aa0ac':'#4C7EF3',da=cont?' stroke-dasharray="4 3"':'';edges.insertAdjacentHTML('beforeend',`<path d="M${mx},${fy} L${mx},${ty} L${tx},${ty}" stroke="${c}" stroke-width="2.6" fill="none"${da}/><circle cx="${mx}" cy="${fy}" r="3.8" fill="${c}"/>`);}
+  function vline(col,y1,y2){const x=col*COLW+9+XOFF;edges.insertAdjacentHTML('beforeend',`<path d="M${x},${y1} L${x},${y2}" stroke="#c9d3e6" stroke-width="1.5" fill="none"/>`);}
+  function bconn(fx,fy,tx,ty,cont){const mx=fx+9+XOFF,tx2=tx+XOFF,c=cont?'#9aa0ac':'#4C7EF3',da=cont?' stroke-dasharray="4 3"':'';edges.insertAdjacentHTML('beforeend',`<path d="M${mx},${fy} L${mx},${ty} L${tx2},${ty}" stroke="${c}" stroke-width="2.6" fill="none"${da}/><circle cx="${mx}" cy="${fy}" r="3.8" fill="${c}"/>`);}
   // 主线先连续铺完（col 只随本段指令推进 y，不因分支而空等），再把分支放到右侧列（各列自己的 colY 防重叠）
   function walk(t,col,startY,forkX,forkYc,path,bmeta){
     let y=Math.max(startY,colY[col]||0);const pos=[];let firstYc=null,prevBottom=null;
@@ -260,20 +262,25 @@ function render(){
       const bcol=++laneMax;   // 每条分支独占一条车道(列),从分叉点岔到自己的列,绝不共列堆叠
       if(collapsed.has(bp)){
         if(bnd)subtreeDirs(bnd).forEach(x=>renderedNodes.add(x));   // 折叠进 chip 的子树节点算"已覆盖"(非丢弃)
-        const cy=fp.y;const chip=document.createElement('div');chip.className='chip'+(bm.kind==='cont'?' contchip':'');chip.dataset.exp=bp;chip.textContent=gl+' · '+cnt(br[1])+'条';chip.style.left=(bcol*COLW)+'px';chip.style.top=cy+'px';world.appendChild(chip);
+        const cy=fp.y;const chip=document.createElement('div');chip.className='chip'+(bm.kind==='cont'?' contchip':'');chip.dataset.exp=bp;chip.textContent=gl+' · '+cnt(br[1])+'条';chip.style.left=(bcol*COLW+XOFF)+'px';chip.style.top=cy+'px';world.appendChild(chip);
         const chh=chip.offsetHeight;colY[bcol]=cy+chh+9;bconn(col*COLW,fp.yc,bcol*COLW,cy+chh/2,bm.kind==='cont');
       }else{
         const bfy=walk(br[1],bcol,fp.y,col*COLW,fp.yc,bp,bm);   // 分支画进自己的列 bcol
-        const fold=document.createElement('div');fold.className='fold';fold.dataset.fold=bp;fold.textContent='−';fold.style.left=(bcol*COLW-14)+'px';fold.style.top=((bfy||fp.y)-7)+'px';world.appendChild(fold);
+        const fold=document.createElement('div');fold.className='fold';fold.dataset.fold=bp;fold.textContent='−';fold.style.left=(bcol*COLW-14+XOFF)+'px';fold.style.top=((bfy||fp.y)-7)+'px';world.appendChild(fold);
       }
     });
     return firstYc;
   }
   vline(0,rh,colY[0]);
   walk(T,0,colY[0],0,null,'r');
-  world.style.width=(laneMax*COLW+boxW+80)+'px';   // 车道数决定宽度
-  world.style.height=(Math.max(0,...Object.values(colY))+80)+'px';
-  if(TM&&TM.breaks.length){const ww=parseFloat(world.style.width);for(const b of TM.breaks){const el=document.createElement('div');el.className='tbreak';el.style.top=b.y+'px';el.style.width=ww+'px';el.innerHTML='<span>▽ 隔 '+esc(fmtGap(b.d))+'</span>';world.appendChild(el);}}   // 空档折叠断轴
+  world.style.width=(laneMax*COLW+boxW+80+XOFF)+'px';   // 车道数决定宽度(+时间轴左边距)
+  const contH=Math.max(0,...Object.values(colY))+80;world.style.height=contH+'px';
+  if(TM&&TM.breaks.length){const ww=parseFloat(world.style.width);for(const b of TM.breaks){const el=document.createElement('div');el.className='tbreak';el.style.top=b.y+'px';el.style.left=XOFF+'px';el.style.width=(ww-XOFF)+'px';el.innerHTML='<span>▽ 隔 '+esc(fmtGap(b.d))+'</span>';world.appendChild(el);}}   // 空档折叠断轴
+  if(TM){   // 左侧纵向时间坐标轴 + 刻度标签
+    const ln=document.createElement('div');ln.className='taxline';ln.style.top='0px';ln.style.height=contH+'px';ln.style.left=(XOFF-12)+'px';world.appendChild(ln);
+    const pairs=Object.entries(TM.map).sort((a,b)=>a[1]-b[1]);let lastY=-999,lastDay='';
+    for(const [ts,ty] of pairs){if(ty-lastY<80)continue;lastY=ty;const day=ts.slice(5,10),lab=(day!==lastDay?day+' ':'')+ts.slice(11,16);lastDay=day;const tk=document.createElement('div');tk.className='taxtick';tk.style.top=(ty-6)+'px';tk.textContent=lab;world.appendChild(tk);}
+  }
   applyT();hint.textContent=cur+' · '+T.s.length+'+ 轮'+(timeAxis?' · 🕐时间轴':'');
   const expect=subtreeDirs((NBA[cur]||{}).dir||'').length,got=renderedNodes.size;   // 一致性 gate：渲染节点集(含折叠chip子树)应==tree.json 子树
   if(got<expect)console.warn('[思维画布] 一致性告警：对话「'+cur+'」应覆盖 '+expect+' 节点，实际 '+got+'（缺 '+(expect-got)+'），可能有节点被静默丢弃');
